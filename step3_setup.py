@@ -57,108 +57,113 @@ coords = {"NGC_3256": [156.96350816118547, -43.90380553110768],
           "IC_563": [146.58473358464468, 3.0457444142970593],
           "NGC_3690": [172.12959959670823, 58.56115247872474]}
 
-
-
-drs = glob.glob(sys.argv[1] + ":*")
-drs.sort()
-
-mjds = []
-
-for dr in drs:
-    print dr
-
-    first_file = glob.glob(dr + "/ch1/bcd/*bcd*fits")[0]
-    print first_file
-    f = fits.open(first_file)
-    mjds.append(f[0].header["MJD_OBS"])
-    f.close()
-
-print mjds
-print drs
-
-
-
-
-#print "Ready to erase any old results? Control-c if not!"
-#raw_input("")
-
-for dr in drs:
-    do_it("rm -fr " + dr + "/subtraction")
-    do_it("mkdir " + dr + "/subtraction")
-
-    cbcds = filt0(glob.glob(dr + "/ch1/bcd/*cbcd*fits"))
-    cbcds.sort()
-
-    for cbcd in cbcds:
-        flname = cbcd.split("/")[-1]
-        
-        f1 = fits.open(cbcd)
-        f1.append(f1[0])
-        f1[0].data = zeros([0,0], dtype=float32)
-        f1[1].name = "SCI"
-
-        f2 = fits.open(cbcd.replace("cbcd.fits", "cbunc.fits"))
-        f1.append(f2[0])
-        f1[2].name = "ERR"
-        f2.close()
-
-        # NGC_232:1/working_dir/Rmask/SPITZER_I1_47507968_0084_0000_2_cbcd_rmask.fits
-        f3 = fits.open(dr + "/working_dir/Rmask/" + flname.replace("cbcd.fits", "cbcd_rmask.fits"))
-
-        f1.append(f3[0])
-        f1[3].name = "DQ"
-        f3.close()
-
-        print f1.info()
-
-        f1.writeto(dr + "/subtraction/" + flname.replace("cbcd.fits", "cbcd_merged.fits"), overwrite = True)
-        f1.close()
-
-    
-
 f_all = open("run.sh", 'w')
 
-for i in range(len(drs)):
 
-    refs = []
-    for j in range(len(drs)):
-        if j != i:
-            if mjds[j] < mjds[i] - 20. or mjds[j] > mjds[i] + 330.:
-                refs.append(j)
-
-    print i, drs[i], refs
+for gal_name in sys.argv[1:]:
     
-    wd = drs[i] + "/subtraction/"
-
-
-    f = open("orig_paramfile.txt", 'r')
-    lines = f.read()
-    f.close()
-
-    fls = []
-    first_epoch_count = None
-    for ind in [i] + refs:
-        glob_results = glob.glob(commands.getoutput("pwd") + "/" + drs[ind] + "/subtraction/*merged.fits")[:40]
-        glob_results.sort()
-        fls += glob_results
-        if first_epoch_count == None:
-            first_epoch_count = len(glob_results)
-
-
-
-    lines = lines.replace("IIIII", str(fls))
-    lines = lines.replace("EEEEE", "[20.]*%i + [1.]*%i" % (first_epoch_count, len(fls) - first_epoch_count))
-    lines = lines.replace("PPPPP", "[0]*%i" % len(fls))
-    lines = lines.replace("RRRRR", str(   coords[drs[i].split(":")[0]][0]   ))
-    lines = lines.replace("DDDDD", str(   coords[drs[i].split(":")[0]][1]   ))
-
-    f = open(wd + "/paramfile.txt", 'w')
-    f.write(lines)
-    f.close()
-
-    #assert len(fls) == 90*(len(refs) + 1), str(len(fls)) + " != 90*" + str(len(refs) + 1)
+    drs = glob.glob(gal_name + ":*")
+    drs.sort()
     
-    f_all.write("cd " + commands.getoutput("pwd") + "/" + wd + "\n")
-    f_all.write("python /home/drubin/new_psf_phot/new_phot.py paramfile.txt > log.txt\n")
+    mjds = []
+    
+    for dr in drs:
+        print dr
+        
+        first_file = glob.glob(dr + "/ch1/bcd/*bcd*fits")[0]
+        print first_file
+        f = fits.open(first_file)
+        mjds.append(f[0].header["MJD_OBS"])
+        f.close()
+
+    print mjds
+    print drs
+    
+    
+    
+    
+    #print "Ready to erase any old results? Control-c if not!"
+    #raw_input("")
+    
+    for dr in drs:
+        do_it("rm -fr " + dr + "/subtraction")
+        do_it("mkdir " + dr + "/subtraction")
+        
+        cbcds = filt0(glob.glob(dr + "/ch1/bcd/*cbcd*fits"))
+        cbcds.sort()
+        
+        for cbcd in cbcds:
+            flname = cbcd.split("/")[-1]
+            
+            f1 = fits.open(cbcd)
+            f1.append(f1[0])
+            f1[0].data = zeros([0,0], dtype=float32)
+            f1[1].name = "SCI"
+
+            f2 = fits.open(cbcd.replace("cbcd.fits", "cbunc.fits"))
+            f1.append(f2[0])
+            f1[2].name = "ERR"
+            f2.close()
+            
+            # NGC_232:1/working_dir/Rmask/SPITZER_I1_47507968_0084_0000_2_cbcd_rmask.fits
+            f3 = fits.open(dr + "/working_dir/Rmask/" + flname.replace("cbcd.fits", "cbcd_rmask.fits"))
+            
+            f1.append(f3[0])
+            f1[3].name = "DQ"
+            f3.close()
+            
+            print f1.info()
+            
+            f1.writeto(dr + "/subtraction/" + flname.replace("cbcd.fits", "cbcd_merged.fits"), overwrite = True)
+            f1.close()
+
+    
+
+    for i in range(len(drs)):
+        
+        refs = []
+        for j in range(len(drs)):
+            if j != i:
+                if mjds[j] < mjds[i] - 20. or mjds[j] > mjds[i] + 330.:
+                    refs.append(j)
+
+        print i, drs[i], refs
+    
+        wd = drs[i] + "/subtraction/"
+        
+
+        f = open("orig_paramfile.txt", 'r')
+        lines = f.read()
+        f.close()
+
+        fls = []
+        first_epoch_count = None
+        for ind in [i] + refs:
+            glob_results = glob.glob(commands.getoutput("pwd") + "/" + drs[ind] + "/subtraction/*merged.fits")[:40]
+            glob_results.sort()
+            fls += glob_results
+            if first_epoch_count == None:
+                first_epoch_count = len(glob_results)
+
+
+
+        lines = lines.replace("IIIII", str(fls))
+        lines = lines.replace("EEEEE", "[20.]*%i + [1.]*%i" % (first_epoch_count, len(fls) - first_epoch_count))
+        lines = lines.replace("PPPPP", "[0]*%i" % len(fls))
+        lines = lines.replace("RRRRR", str(   coords[drs[i].split(":")[0]][0]   ))
+        lines = lines.replace("DDDDD", str(   coords[drs[i].split(":")[0]][1]   ))
+        
+        f = open(wd + "/paramfile.txt", 'w')
+        f.write(lines)
+        f.close()
+        
+        #assert len(fls) == 90*(len(refs) + 1), str(len(fls)) + " != 90*" + str(len(refs) + 1)
+        
+        f_all.write("cd " + commands.getoutput("pwd") + "/" + wd + "\n")
+        f_all.write("python /home/drubin/new_psf_phot/new_phot.py paramfile.txt > log.txt\n")
+
+f_all.write('echo "Done with forward models" | mailx -s "Done" drubin@stsci.edu\n')
 f_all.close()
+
+
 

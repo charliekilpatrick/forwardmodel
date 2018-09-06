@@ -89,4 +89,5 @@ mosaic.pl -n mosaic_I1.nl -I images.list -S sigma.list -d mask.list > log2.txt\n
     f_mopex.write("rm -fr " + sub_stack_dir_abs + "/cal\n")
     
 
+f_mopex.write('\necho "Done with forward models" | mailx -s "Done" drubin@stsci.edu\n')
 f_mopex.close()
