@@ -53,6 +53,7 @@ mosaic.pl -n mosaic_I1.nl -I images.list -S sigma.list -d mask.list > log2.txt
         print commands.getoutput(cmd)
 
 
+
 pwd = commands.getoutput("pwd")
 
 pool = mp.Pool(processes = 16)

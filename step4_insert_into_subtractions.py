@@ -4,6 +4,7 @@ import gzip
 import cPickle as pickle
 import sys
 import commands
+import tqdm
 
 def do_it(cmd):
     print cmd
@@ -13,8 +14,10 @@ def do_it(cmd):
 f_mopex = open("run_stacks.sh", 'w')
 f_mopex.write("source mopex-script-env.csh\n")
 
+basedirs = sys.argv[1:]
+basedirs.sort()
 
-for basedir in sys.argv[1:]:
+for basedir in tqdm.tqdm(basedirs):
     [all_data, parsed, settings, SNCmat, Cmat] = pickle.load(gzip.open(basedir + "/subtraction/fit_results.pickle", 'rb'))
     
     for key in settings:
@@ -59,12 +62,18 @@ for basedir in sys.argv[1:]:
         
         f = fits.open(origim)
         
-        
+
+        pixels_not_modified_by_subtraction = f[0].data*0. + 1
+
         for i, ii in enumerate(range(all_data["pixelranges"][imind][0], all_data["pixelranges"][imind][1])):
             for j, jj in enumerate(range(all_data["pixelranges"][imind][2], all_data["pixelranges"][imind][3])):
                 if subtractions[imind,i,j] != 0:
                     f[0].data[ii, jj] = subtractions[imind,i,j]
-                
+                    pixels_not_modified_by_subtraction[ii,jj] = 0
+
+        sky_inds = where((pixels_not_modified_by_subtraction == 1)*(1 - isnan(f[0].data))*(1 - isinf(f[0].data)))
+        f[0].data -= median(f[0].data[sky_inds])*pixels_not_modified_by_subtraction
+        
         f.writeto(newim, overwrite = True)
         f.close()
         
@@ -80,14 +89,23 @@ for basedir in sys.argv[1:]:
     pwd = commands.getoutput("pwd")
     sub_stack_dir_abs = pwd + "/" + basedir + "/sub_stack"
 
+
+    if int(basedir.split(":")[-1]) == 1:
+        not_first_epoch = 0
+    else:
+        not_first_epoch = 1
+        f_mopex.write("\ncp " + pwd + "/" + basedir[:-1] + "1/sub_stack/mosaic_fif.tbl" " " + pwd + "/" + basedir + "/sub_stack\n")
+
     f_mopex.write("\ncp -r /home/drubin/mopex/cal " + sub_stack_dir_abs + '\n')
     f_mopex.write("cd " + sub_stack_dir_abs + '\n')
-    f_mopex.write("""overlap.pl -n overlap_I1.nl -I images.list -S sigma.list -d mask.list > log1.txt
-mosaic.pl -n mosaic_I1.nl -I images.list -S sigma.list -d mask.list > log2.txt\n""")
+    f_mopex.write("""overlap.pl -n overlap_I1""" + "_nofid"*not_first_epoch + """.nl -I images.list -S sigma.list -d mask.list """ + "-F mosaic_fif.tbl"*not_first_epoch + """ > log1.txt
+mosaic.pl -n mosaic_I1""" + "_nofid"*not_first_epoch + """.nl -I images.list -S sigma.list -d mask.list """ + "-F mosaic_fif.tbl"*not_first_epoch + """ > log2.txt\n""")
     f_mopex.write("mv -v Combine/mosaic.fits " + " Combine/mosaic_" + basedir.replace(":", "-")  + "_sub.fits" + '\n')
 
     f_mopex.write("rm -fr " + sub_stack_dir_abs + "/cal\n")
     
+    
 
-f_mopex.write('\necho "Done with forward models" | mailx -s "Done" drubin@stsci.edu\n')
+
+f_mopex.write('\necho "Done with mopex runs" | mailx -s "Done" drubin@stsci.edu\n')
 f_mopex.close()

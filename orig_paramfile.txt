@@ -7,7 +7,7 @@ patch			21		# patch size-- must be odd
 fixmodelfromrefs	0		# 1=> fix the model from the references		
 use_DQ_list    		1
 n_cpu			32
-n_iter			3
+n_iter			4
 
 
 sndRA_offset		0		# SNRA - GalRA
