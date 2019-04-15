@@ -67,6 +67,9 @@ coords = {"NGC_3256": [156.96350816118547, -43.90380553110768],
           "NGC_3690_TARG1": [172.12959959670823, 58.56115247872474],
           "NGC_3690_TARG2": [172.1403054, 58.5628389]}
 
+larger_patch = coords.keys()
+
+print "larger_patch", " ".join(larger_patch)
 
 f_all = open("run.sh", 'w')
 
@@ -163,7 +166,15 @@ for gal_name in tqdm.tqdm(sys.argv[1:]):
         lines = lines.replace("PPPPP", "[0]*%i" % len(fls))
         lines = lines.replace("RRRRR", str(   coords[drs[i].split(":")[0]][0]   ))
         lines = lines.replace("DDDDD", str(   coords[drs[i].split(":")[0]][1]   ))
-        
+        if larger_patch.count(gal_name):
+            lines = lines.replace("QQQQQ", "29")
+            lines = lines.replace("SSSSS", "31")
+            lines = lines.replace("AAAAA", "1")
+        else:
+            lines = lines.replace("QQQQQ", "21")
+            lines = lines.replace("SSSSS", "20")
+            lines = lines.replace("AAAAA", "0")
+
         f = open(wd + "/paramfile.txt", 'w')
         f.write(lines)
         f.close()
@@ -175,6 +186,4 @@ for gal_name in tqdm.tqdm(sys.argv[1:]):
 
 f_all.write('echo "Done with forward models" | mailx -s "Done" drubin@stsci.edu\n')
 f_all.close()
-
-
 

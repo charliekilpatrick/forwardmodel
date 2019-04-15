@@ -11,11 +11,45 @@ def do_it(cmd):
     print commands.getoutput(cmd)
 
 
-f_mopex = open("run_stacks.sh", 'w')
-f_mopex.write("source mopex-script-env.csh\n")
+def open_file(mopex_count, run_stacks_list):
+    flnme = "run_stacks_%i.sh" % mopex_count
+    
+    f_mopex = open(flnme, 'w')
+    f_mopex.write("sleep " + str(random.randint(120)) + '\n')
+    f_mopex.write("source mopex-script-env.csh\n")
+    dir_count = 0
+    run_stacks_list.append(flnme)
 
-basedirs = sys.argv[1:]
+    return f_mopex, dir_count, run_stacks_list
+
+    
+
+def close_file(f_mopex, mopex_count, num_ims, run_stacks_num_ims):
+    f_mopex.close()
+    run_stacks_num_ims.append(num_ims)
+    
+    dir_count = 0
+    num_ims = 0
+
+    return dir_count, run_stacks_num_ims
+
+
+
+print commands.getoutput("rm -fv run_stacks_*.sh")
+
+run_stacks_list = []
+run_stacks_num_ims = []
+
+sne_per_file = int(sys.argv[1])
+basedirs = sys.argv[2:]
+
 basedirs.sort()
+
+mopex_count = 0
+num_ims = 0
+
+f_mopex, dir_count, run_stacks_list = open_file(mopex_count, run_stacks_list)
+
 
 for basedir in tqdm.tqdm(basedirs):
     [all_data, parsed, settings, SNCmat, Cmat] = pickle.load(gzip.open(basedir + "/subtraction/fit_results.pickle", 'rb'))
@@ -33,6 +67,8 @@ for basedir in tqdm.tqdm(basedirs):
         if settings["images"][i].count(basedir):
             images_to_work_with.append(i)
 
+    num_ims += settings["n_img"]
+            
     assert len(images_to_work_with) > 0
     print "Found these ", images_to_work_with, len(images_to_work_with)
     
@@ -94,6 +130,7 @@ for basedir in tqdm.tqdm(basedirs):
         not_first_epoch = 0
     else:
         not_first_epoch = 1
+        
         f_mopex.write("\ncp " + pwd + "/" + basedir[:-1] + "1/sub_stack/mosaic_fif.tbl" " " + pwd + "/" + basedir + "/sub_stack\n")
 
     f_mopex.write("\ncp -r /home/drubin/mopex/cal " + sub_stack_dir_abs + '\n')
@@ -103,9 +140,42 @@ mosaic.pl -n mosaic_I1""" + "_nofid"*not_first_epoch + """.nl -I images.list -S 
     f_mopex.write("mv -v Combine/mosaic.fits " + " Combine/mosaic_" + basedir.replace(":", "-")  + "_sub.fits" + '\n')
 
     f_mopex.write("rm -fr " + sub_stack_dir_abs + "/cal\n")
+
+    for subdir_to_remove in ["BoxOutlier", "ReInterp", "Overlap_Corr", "DualOutlier", "Outlier", "Interp"]:
+        f_mopex.write("rm -fr " + sub_stack_dir_abs + "/" + subdir_to_remove + "\n")
+
     
-    
+    if int(basedir.split(":")[-1]) == 8:
+        dir_count += 1
+        
+        if dir_count >= sne_per_file:
+            dir_count, run_stacks_num_ims = close_file(f_mopex, mopex_count, num_ims, run_stacks_num_ims)
+            
+            if basedir != basedirs[-1]:
+                mopex_count += 1
+
+                f_mopex, dir_count, run_stacks_list = open_file(mopex_count, run_stacks_list)
+                
 
 
+try:
+    dir_count, run_stacks_num_ims = close_file(f_mopex, mopex_count, num_ims, run_stacks_num_ims)
+except:
+    print "Couldn't close file! I guess there's not one open."
+
+run_stacks_num_ims = array(run_stacks_num_ims)
+
+print "Final image count for each file:"
+for i in range(len(run_stacks_list)):
+    print run_stacks_list[i], run_stacks_num_ims[i]
+
+ind = argmax(run_stacks_num_ims)
+
+f_mopex = open(run_stacks_list[ind], 'a')
 f_mopex.write('\necho "Done with mopex runs" | mailx -s "Done" drubin@stsci.edu\n')
 f_mopex.close()
+
+print "Run these:"
+print "/bin/csh"
+print "source " + " & ; source ".join(run_stacks_list) + " &"
+
