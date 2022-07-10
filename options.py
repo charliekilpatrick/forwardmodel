@@ -31,6 +31,9 @@ def parse_arguments(usage=''):
                         help='Base directory for mopex')
     parser.add_argument('--nprocesses', type=int, default=8,
                         help='Number of threads to use with multiprocessing')
+    parser.add_argument('--email', type=str,
+        default='ckilpatrick@northwestern.edu',
+        help='Email to message when subtraction process is finished')
 
     args = parser.parse_args()
     args.band = parse_channel_name(args.band)

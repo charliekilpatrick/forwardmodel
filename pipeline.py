@@ -7,8 +7,9 @@ import sys, os
 import options
 
 # Import other modules from repository
-import sort_files
-import initial_process
+from analysis import sort_files
+from analysis import initial_process
+from analysis import subtraction_setup
 
 if __name__ == '__main__':
     args = options.parse_arguments(usage='pipeline.py datadir [options]')
@@ -24,3 +25,6 @@ if __name__ == '__main__':
 
     initial_process.initial_process(args.datadir, args.mopexdir,
         channel=args.band, nprocesses=args.nprocesses)
+
+    run_file = subtraction_setup.setup_subtractions(args.datadir, args.band,
+        email=args.email)
