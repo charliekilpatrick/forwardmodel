@@ -3,10 +3,11 @@ from astropy.io import fits
 from numpy import *
 import sys
 import tqdm
-import find_coords
 import os
 import shutil
-import param_data
+
+from . import find_coords
+from . import param_data
 
 def do_it(cmd):
     print(cmd)
