@@ -4,15 +4,15 @@ import multiprocessing as mp
 import subprocess
 import shutil
 
-def initial_process(basedir, mopex, channel='ch1', nprocesses=8):
-    def filter0(list_of_fls):
+def filter0(list_of_fls):
         return [item for item in list_of_fls if item.count("_0000_0000_") == 0]
 
-    def write_out_inlist(fls, outfile):
+def write_out_inlist(fls, outfile):
         with open(outfile, 'w') as f:
             f.write('\n'.join(fls)+'\n')
 
-    def run_dir(dr):
+def run_dir(var):
+        dr, mopex, channel = var
         wd = os.path.join(dr, "working_dir")
 
         if os.path.exists(wd):
@@ -23,11 +23,11 @@ def initial_process(basedir, mopex, channel='ch1', nprocesses=8):
         fls.sort()
 
         ufls = [fl.replace("cbcd.fits", "cbunc.fits") for fl in fls]
-        mfls = [fl.replace("cbunc.fits", "bimsk.fits") for fl in fls]
+        mfls = [fl.replace("cbcd.fits", "bimsk.fits") for fl in fls]
 
         write_out_inlist(fls, os.path.join(wd, 'images.list'))
-        write_out_inlist(fls, os.path.join(wd, 'sigma.list'))
-        write_out_inlist(fls, os.path.join(wd, 'mask.list'))
+        write_out_inlist(ufls, os.path.join(wd, 'sigma.list'))
+        write_out_inlist(mfls, os.path.join(wd, 'mask.list'))
 
         os.system(f"cp -r {mopex}/cal {wd}")
         os.system(f"cp -r {mopex}/cdf {wd}")
@@ -49,8 +49,11 @@ def initial_process(basedir, mopex, channel='ch1', nprocesses=8):
             print(cmd)
             os.system(cmd)
 
+def initial_process(basedir, mopex, channel='ch1', nprocesses=8):
+
     pool = mp.Pool(processes=nprocesses)
 
-    drs = glob.glob(os.path.join(indir, "*:*"))
-    pool.map(run_dir, drs)
+    drs = glob.glob(os.path.join(basedir, "*:*"))
+    var = [(dr, mopex, channel) for dr in drs]
+    pool.map(run_dir, var)
 

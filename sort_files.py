@@ -6,7 +6,7 @@ import shutil
 
 def sort_files(indir, channel='ch1', objname=None):
 
-    drs = glob.glob(os.path.join(indir, 'r*'))
+    drs = glob.glob(os.path.join(indir, 'r????????'))
     objs = []
     mjds = []
 
