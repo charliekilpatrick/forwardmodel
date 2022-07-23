@@ -7,6 +7,7 @@ import shutil
 def sort_files(indir, channel='ch1', objname=None):
 
     drs = glob.glob(os.path.join(indir, 'r????????'))
+    drs.sort()
     objs = []
     mjds = []
 
@@ -14,15 +15,16 @@ def sort_files(indir, channel='ch1', objname=None):
         print(f'Checking {dr}')
 
         fls = glob.glob(os.path.join(dr, f'{channel}/bcd/*_cbcd.fits'))
+        fls.sort()
 
         print(f'First file {fls[0]}')
 
         f = fits.open(fls[0], mode='readonly')
-        obj = f[0].header["OBJECT"]
+        obj = f[0].header['OBJECT']
         if objname:
             obj = objname
 
-        mjd = f[0].header["MJD_OBS"]
+        mjd = f[0].header['MJD_OBS']
 
         mjds.append(mjd)
         objs.append(obj)

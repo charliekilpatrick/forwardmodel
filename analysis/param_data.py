@@ -1,39 +1,44 @@
-data="""oversample		5		# Should match psf
-renormpsf		0		# only use if psf is not normalized
-psf_has_pix		1		# ePSF containing pixel?
+import os
 
-fitSNoffset		0		# 1 => fit offset
-patch			QQQQQ		# patch size-- must be odd
-fixmodelfromrefs	0		# 1=> fix the model from the references		
-use_DQ_list    		1
-n_cpu			32
-n_iter			4
+analysis_dir = os.path.dirname(os.path.realpath(__file__))
+data_dir = os.path.join(analysis_dir, '../data')
 
+data="""oversample      5       # Should match psf
+renormpsf       0       # only use if psf is not normalized
+psf_has_pix     1       # ePSF containing pixel?
 
-sndRA_offset		0		# SNRA - GalRA
-sndDec_offset		0		# SNdec - Galdec
+fitSNoffset         0       # 1 => fit offset
+patch               QQQQQ   # patch size-- must be odd
+fixmodelfromrefs    0       # 1=> fix the model from the references
+use_DQ_list         1
+n_cpu               32
+n_iter              4
 
-RA0			RRRRR		# Can be single number, or list		
-Dec0			DDDDD		# Can be single number, or list
+sndRA_offset        0.001591598   # SNRA - GalRA
+sndDec_offset       0.0024214555  # SNdec - Galdec
 
-images			IIIII
+RA0                 RRRRR       # Can be single number, or list
+Dec0                DDDDD       # Can be single number, or list
 
-sciext			1
-errext			2
-dqext			3
-okaydqs			[0]
-errscale		EEEEE
+images              IIIII
 
-epochs			PPPPP		# 0 = reference, 1 = first epoch, ...
-psfs			["/home/drubin/spitzer_prf/new_psf_x5.fits"]   		# psf for galaxy, SN epoch 1, ...
+sciext              1
+errext              2
+dqext               3
+okaydqs             [0]
+errscale            EEEEE
 
-splineradius		SSSSS
-splinepixelscale	0.00015          # default is 2.10e-5
+epochs              PPPPP                           # 0 = reference, 1 = first epoch, ...
+psfs                ["{data_dir}/FFFFF_psf_x5.fits"]  # psf for galaxy, SN epoch 1, ...
 
-apodize			AAAAA
-pixel_area_map		"/user/drubin/archive_download/blank_pam.fits"
-bad_pixel_list		"/user/drubin/archive_download/blank_bad_pixel_list.txt"
+splineradius        SSSSS
+splinepixelscale    0.00015          # default is 2.10e-5
 
-SN_centroid_prior_arcsec	10
-iterative_centroid		1
-"""
+apodize             AAAAA
+
+pixel_area_map      "{data_dir}/blank_pam.fits"
+bad_pixel_list      "{data_dir}/blank_bad_pixel_list.txt"
+
+SN_centroid_prior_arcsec    10
+iterative_centroid          1
+""".format(data_dir=data_dir)
