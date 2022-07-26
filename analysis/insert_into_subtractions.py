@@ -39,7 +39,7 @@ def create_nofid_params(mopex, basecmd, channel):
 
     ch = channel.replace('ch','I')
 
-    outparamfile = os.path.join(mopex, 'cdf', f'{basecmd}_{ch}_nofid.pl')
+    outparamfile = os.path.join(mopex, 'cdf', f'{basecmd}_{ch}_nofid.nl')
     if os.path.exists(outparamfile):
         return(None)
 

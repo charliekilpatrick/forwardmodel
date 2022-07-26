@@ -1,1 +1,2 @@
-pipeline.py /data/ckilpatrick/spitzer/ch2 197.4487465 -23.3839793 --band ch2 --object AT2017gfo --mopex-dir /data/software/mopex
+pipeline.py /data/ckilpatrick/spitzer/2017gfo/ch2 197.4487465 -23.3839793 --band ch2 --object AT2017gfo --mopex-dir /data/software/mopex --init-date 2017-08-17 --max-date 2018-01-01 --sn-offset 0.001591598 0.0024214555 --stamp-size 45 > pipeline.out
+pipeline.py /data/ckilpatrick/spitzer/2017gfo/ch1 197.4487465 -23.3839793 --band ch1 --object AT2017gfo --mopex-dir /data/software/mopex --init-date 2017-08-17 --max-date 2018-01-01 --sn-offset 0.001591598 0.0024214555 --stamp-size 45 > pipeline.out

@@ -14,8 +14,8 @@ use_DQ_list         1
 n_cpu               32
 n_iter              4
 
-sndRA_offset        0.001591598   # SNRA - GalRA
-sndDec_offset       0.0024214555  # SNdec - Galdec
+sndRA_offset        RRRAOFFSET   # SNRA - GalRA
+sndDec_offset       DDECOFFSET  # SNdec - Galdec
 
 RA0                 RRRRR       # Can be single number, or list
 Dec0                DDDDD       # Can be single number, or list

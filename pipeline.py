@@ -32,7 +32,9 @@ if __name__ == '__main__':
     clobber = not args.no_clobber
 
     run_file = subtraction_setup.setup_subtractions(args.datadir, args.band,
-        args.ra, args.dec, email=args.email, clobber=clobber)
+        args.ra, args.dec, email=args.email, clobber=clobber,
+        interactive=args.interactive, date_range=args.date_range,
+        offset=args.sn_offset, stamp_size=args.stamp_size)
 
     # Run new_phot.py script
     basedir=args.datadir

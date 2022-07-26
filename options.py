@@ -3,6 +3,14 @@ import sys
 from astropy.coordinates import SkyCoord
 import numpy as np
 from astropy import units as u
+from astropy.time import Time
+
+def parse_two_floats(value):
+    values = value.split()
+    if len(values) != 2:
+        raise argparse.ArgumentError
+    values = map(float, values)
+    return(values)
 
 def is_number(num):
     try:
@@ -70,6 +78,18 @@ def parse_arguments(usage=''):
                         help='Minimum exposure time images to analyze')
     parser.add_argument('--no-clobber', default=False, action='store_true',
                         help='Do not clobber previous runs of pipeline')
+    parser.add_argument('--init-date', default=None, type=str,
+                        help='UT date (MJD, ISO, etc.) for referencing date '+\
+                        'range.')
+    parser.add_argument('--max-date', default=None, type=str,
+                        help='Maximum date (MJD, ISO, relative to --init-date'+\
+                        ') for calculating date range.')
+    parser.add_argument('--stamp-size', default=29, type=float,
+                        help='Stamp size for analyzing Spitzer data '+\
+                        '(must be odd integer).')
+    parser.add_argument('--sn-offset', action='store', type=float,
+                  help='Offsets (in RA/Dec) between input RA/Dec and target',
+                  default=[0.0, 0.0], nargs=2)
     parser.add_argument('--email', type=str,
         default='ckilpatrick@northwestern.edu',
         help='Email to message when subtraction process is finished')
@@ -83,5 +103,64 @@ def parse_arguments(usage=''):
 
     args = parser.parse_args()
     args.band = parse_channel_name(args.band)
+
+    args.date_range = []
+    args.interactive = True
+
+    args.stamp_size = int(args.stamp_size)
+    if args.stamp_size % 2 == 0:
+        print('WARNING: stamp size must be an odd integer')
+        stamp_size = args.stamp_size + 1
+        print(f'Setting stamp size = {stamp_size}')
+        args.stamp_size = int(stamp_size)
+
+    if args.init_date and args.max_date:
+        print(args.init_date, args.max_date)
+        t0 = None
+        if is_number(args.init_date):
+            # Assume init date is MJD
+            try:
+                t0 = Time(args.init_date, format='mjd')
+            except:
+                pass
+        else:
+            try:
+                t0 = Time(args.init_date)
+            except:
+                pass
+        reldate = None ; t1 = None
+        if is_number(args.max_date):
+            if float(args.max_date)<10000:
+                reldate = float(args.max_date)
+            else:
+                try:
+                    t1 = Time(args.max_date, format='mjd')
+                except:
+                    pass
+        else:
+            try:
+                t1 = Time(args.max_date)
+            except:
+                pass
+
+        if t0 and reldate:
+            if reldate < 0:
+                args.date_range = [t0.mjd + reldate, t0.mjd]
+                args.interactive = False
+                print(f'Interactive=False, date range={args.date_range}')
+            else:
+                args.date_range = [t0.mjd, t0.mjd + reldate]
+                args.interactive = False
+                print(f'Interactive=False, date range={args.date_range}')
+        elif t0 and t1:
+            if t0 < t1:
+                args.date_range = [t0.mjd, t1.mjd]
+                args.interactive = False
+                print(f'Interactive=False, date range={args.date_range}')
+            else:
+                args.date_range = [t1.mjd, t0.mjd]
+                args.interactive = False
+                print(f'Interactive=False, date range={args.date_range}')
+
 
     return(args)

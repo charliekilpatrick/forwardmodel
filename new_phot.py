@@ -17,7 +17,7 @@ import json
 import warnings
 warnings.filterwarnings('ignore')
 
-version = 1.33
+version = 1.34
 
 # version history:
 # 1.0 05-01-2018: First release
@@ -41,6 +41,7 @@ version = 1.33
 # 1.32 1-21-2019: Saves model of just point source
 # 1.32 01-02-2019: Fixed epochs bug when starting with non-zero epoch
 # 1.33 01-16-2021: Dumps json of parsed to result file
+# 1.34 07-24-2022: Refactored for running inside of pipeline and streamlined code
 
 
 print("version: ", version)
@@ -139,7 +140,6 @@ def robust_index(dat, i1, i2, j1, j2, fill_value = 0):
 def read_image(im, pam, bad_pix_list, exts, settings, RA0, Dec0):
     """Reads patches from image files."""
 
-    #[badx, bady] = readcol(bad_pix_list, 'ii')
     badx = [] ; bady = []
 
     patch2 = int(floor(settings["patch"]/2.))
@@ -173,16 +173,11 @@ def read_image(im, pam, bad_pix_list, exts, settings, RA0, Dec0):
     subxs += pix_xy[0]
     subys += pix_xy[1]
 
-    #print("subxs, subys", subxs, subys)
-
     subxs, subys = meshgrid(subxs, subys)
 
     RAs, Decs =  w.all_pix2world(subxs, subys, 1)
 
     assert Decs.max() - Decs.min() > settings["splinepixelscale"]*(2*settings["splineradius"] + 1)*1.05, "Spline overfills patch!"
-
-    #save_img(RAs, "RAs.fits")
-    #save_img(Decs, "Decs.fits")
 
     subxs = arange(settings["patch"], dtype=float64)
     subys = arange(settings["patch"], dtype=float64)
@@ -194,14 +189,6 @@ def read_image(im, pam, bad_pix_list, exts, settings, RA0, Dec0):
     pixel_sampled_RAs, pixel_sampled_Decs =  w.all_pix2world(subxs, subys, 1)
 
     pixel_sampled_js, pixel_sampled_is = meshgrid(arange(settings["patch"], dtype=float64), arange(settings["patch"], dtype=float64))
-
-    #RADec_to_i = interp2d(x = reshape(pixel_sampled_RAs, settings["patch"]**2),
-    #                      y = reshape(pixel_sampled_Decs, settings["patch"]**2),
-    #                      z = reshape(pixel_sampled_is, settings["patch"]**2), kind = 'linear')
-    #RADec_to_j = interp2d(x = reshape(pixel_sampled_RAs, settings["patch"]**2),
-    #                      y = reshape(pixel_sampled_Decs, settings["patch"]**2),
-    #                      z = reshape(pixel_sampled_js, settings["patch"]**2), kind = 'linear')
-
 
     RADec_to_i = SmoothBivariateSpline(x = reshape(pixel_sampled_RAs, settings["patch"]**2),
                                        y = reshape(pixel_sampled_Decs, settings["patch"]**2),
@@ -421,7 +408,8 @@ def parseP(P, settings):
     parsed = {}
 
     ind = 0
-    parsed["coeffs"] = reshape_coeffs(P[ind:ind+settings["n_coeff"]], settings["splineradius"])
+    parsed["coeffs"] = reshape_coeffs(P[ind:ind+settings["n_coeff"]],
+        settings["splineradius"])
     ind += settings["n_coeff"]
 
     parsed["dRA"] = P[ind:ind+settings["n_img"]]
@@ -437,8 +425,8 @@ def parseP(P, settings):
     parsed["SN_ampl"] = P[ind:ind+settings["n_epoch"]]
     ind += settings["n_epoch"]
 
-    parsed["pt_RA"] = settings["RA0"] + parsed["dRA"] + parsed["sndRA_offset"]
-    parsed["pt_Dec"] = settings["Dec0"] + parsed["dDec"] + parsed["sndDec_offset"]
+    parsed["pt_RA"] = settings["RA0"]+parsed["dRA"]+parsed["sndRA_offset"]
+    parsed["pt_Dec"] = settings["Dec0"]+parsed["dDec"]+parsed["sndDec_offset"]
 
     return parsed
 
@@ -446,9 +434,10 @@ def parseP(P, settings):
 def unparseP(parsed, settings):
     """parsed is a dictionary of parameters."""
 
-    P = concatenate((unreshape_coeffs(parsed["coeffs"], settings["splineradius"]),
-                     parsed["dRA"], parsed["dDec"], [parsed["sndRA_offset"]], [parsed["sndDec_offset"]], parsed["SN_ampl"]
-                 ))
+    P = concatenate((unreshape_coeffs(parsed["coeffs"],
+        settings["splineradius"]), parsed["dRA"], parsed["dDec"],
+        [parsed["sndRA_offset"]], [parsed["sndDec_offset"]], parsed["SN_ampl"]
+    ))
     return P
 
 ##########################################
@@ -461,10 +450,6 @@ def make_pixelized_PSF(parsed, i):
 
     icoord = all_data["RADec_to_i"][i](parsed["pt_RA"][i], parsed["pt_Dec"][i])[0,0]
     jcoord = all_data["RADec_to_j"][i](parsed["pt_RA"][i], parsed["pt_Dec"][i])[0,0]
-
-
-    #print "i, icoord, jcoord", i, icoord, jcoord
-
 
     j2d, i2d = meshgrid(arange(settings["patch"], dtype=float64)*settings["oversample"],
                         arange(settings["patch"], dtype=float64)*settings["oversample"])
@@ -498,38 +483,23 @@ def indiv_model(args):
 
 
 
-    # map_coordinates numbers starting from 0. E.g., radius = 3 => 0, 1, 2, (3), 4, 5, 6
+    # map_coordinates numbers starting from 0, e.g., radius=3 => 0,1,2,(3),4,5,6
     xs = (all_data["RAs"][i] - (settings["RA0"][i] + parsed["dRA"][i]))*cos(settings["Dec0"][i]/(180./pi))/settings["splinepixelscale"] + settings["splineradius"]
     ys = (all_data["Decs"][i] - (settings["Dec0"][i] + parsed["dDec"][i]))/settings["splinepixelscale"] + settings["splineradius"]
-
-    #xs = (RAs - settings["RA0"])*cos(settings["Dec0"]/(180./pi))/settings["splinepixelscale"] + settings["splineradius"]
-    #ys = (Decs - settings["Dec0"])/settings["splinepixelscale"] + settings["splineradius"]
-
-
-    #save_img(xs, "RA_frame.fits")
-    #save_img(ys, "Dec_frame.fits")
 
     xs1D = reshape(xs, settings["padsize"]**2)
     ys1D = reshape(ys, settings["padsize"]**2)
 
     coords = array([xs1D, ys1D])
-    #print coords.shape
 
-    #print parsed["coeffs"].shape
     subsampled_model = map_coordinates(parsed["coeffs"], coordinates = coords, order = 2, mode="constant", cval = 0, prefilter = True)
     subsampled_model = reshape(subsampled_model, [settings["padsize"], settings["padsize"]])
 
-    #save_img(subsampled_model, "subsampled_model.fits")
     subsampled_convolved_model = ft.ifft2(ft.fft2(subsampled_model) * all_data["psf_FFTs"][settings["psfs"][i]])
     subsampled_convolved_model = array(real(subsampled_convolved_model), dtype=float64)
 
-    #save_img(subsampled_convolved_model, "subsampled_convolved_model.fits")
-
     convolved_model = subsampled_convolved_model[settings["oversample2"]::settings["oversample"], settings["oversample2"]::settings["oversample"]]
     convolved_model = convolved_model[:settings["patch"], :settings["patch"]]# + parsed["sky"][i]
-
-
-    #print "psf ", i, settings["epochs"][i], parsed["SN_ampl"], (parsed["SN_ampl"][settings["epochs"][i] - 1])
 
     if settings["epochs"][i] > 0:
         pixelized_psf = make_pixelized_PSF(parsed, i)
@@ -538,7 +508,6 @@ def indiv_model(args):
 
     if any(all_data["invvars"][i] != 0):
         sky_estimate = sum((all_data["scidata"][i] - convolved_model)*all_data["invvars"][i])/sum(all_data["invvars"][i])
-    #print "i, sky_estimate ", i, sky_estimate
     else:
         sky_estimate = 0.
 
@@ -548,11 +517,6 @@ def indiv_model(args):
 
 def modelfn(parsed, im_ind = None, just_pt_flux = 0):#, all_data, settings):
     """Construct the model."""
-
-    #pindiv = partial(indiv_model, all_data = all_data, settings = settings, parsed = parsed)
-
-
-    #args = [[all_data["RAs"][i], all_data["Decs"][i], settings, parsed] for i in range(settings["n_img"])]
 
     if im_ind == None:
         im_ind = list(range(settings["n_img"]))
@@ -576,13 +540,10 @@ def pull_FN(parsed, im_ind = None):
     pulls = []
     for i, im in enumerate(im_ind):
         pulls.append((all_data["scidata"][im] - models[i])*sqrt(all_data["invvars"][im]))
-        #assert 1 - any(isnan(pulls[-1])), str(pulls[-1]) + " " + str(len(pulls)) + " " + str(list(all_data["scidata"][im])) + " " + str(list(all_data["invvars"][im]))
 
     pulls = array(pulls)
     pulls = reshape(pulls, settings["patch"]**2 * len(im_ind))
 
-    #print parsed["pt_RA"].shape, settings["RA0"]
-    #fff
     dRA_arcsec = (parsed["pt_RA"] - settings["RA0"])*cos(settings["Dec0"]/57.2957795)*3600.
     dDec_arcsec = (parsed["pt_Dec"] - settings["Dec0"])*3600.
 
@@ -601,51 +562,7 @@ def pull_FN_wrapper(P, im_ind_wrap, makechi2 = 0):
     if makechi2:
         return dot(pulls, pulls)
     else:
-        return pulls #dot(pulls, pulls)
-
-
-"""
-def lstsq_fit_for_spline(parsed):
-    print "Making jacobian for spline..."
-
-    jacob = zeros([settings["patch"]**2 * settings["n_img"], settings["n_coeff"] + settings["n_epoch"]], dtype=float64)
-
-    parsed["coeffs"] *= 0
-    parsed["SN_ampl"] *= 0
-    models0 = modelfn(parsed)
-
-    reshaped_data = reshape(array(all_data["scidata"]), settings["patch"]**2 * settings["n_img"])
-    reshaped_invvars = reshape(array(all_data["invvars"]), settings["patch"]**2 * settings["n_img"])
-
-    for i in range(settings["n_coeff"]):
-        if i%10 == 0:
-            print i, settings["n_coeff"]
-        coeffs = zeros(settings["n_coeff"], dtype=float64)
-        coeffs[i] = 1.
-
-        parsed["coeffs"] = reshape_coeffs(coeffs, radius = settings["splineradius"])
-        models = modelfn(parsed)
-
-        jacob[:, i] = reshape(models - models0, settings["patch"]**2 * settings["n_img"])*sqrt(reshaped_invvars)
-
-    parsed["coeffs"] *= 0
-
-    for i in range(settings["n_epoch"]):
-        parsed["SN_ampl"] = zeros(settings["n_epoch"], dtype=float64)
-        parsed["SN_ampl"][i] = 1.
-
-        models = modelfn(parsed)
-        jacob[:, i + settings["n_coeff"]] = reshape(models - models0, settings["patch"]**2 * settings["n_img"])*sqrt(reshaped_invvars)
-
-    #save_img(jacob, "jacob.fits")
-
-
-    coeffs1D = linalg.lstsq(jacob, reshaped_data * sqrt(reshaped_invvars))[0]
-    parsed["coeffs"] = reshape_coeffs(coeffs1D[:settings["n_coeff"]], settings["splineradius"])
-    parsed["SN_ampl"] = coeffs1D[settings["n_coeff"]: ]
-
-    return parsed
-"""
+        return pulls
 
 def LM_fit_for_centroids(parsed):
     P = unparseP(parsed, settings)
@@ -666,14 +583,7 @@ def LM_fit_for_centroids(parsed):
     print("Running galaxy+SN-only fit", time.asctime())
     P, F, NA = miniLM_new(ministart = P, miniscale = miniscale, residfn = pull_FN_wrapper, passdata = list(range(settings["n_img"])), verbose = False, maxiter = 1, use_dense_J = True)
     print("Done", time.asctime())
-
     print("LM chi^2", F)
-
-
-    #P, F, NA = miniNM_new(ministart = P, miniscale = miniscale, residfn = lambda x, y: pull_FN_wrapper(x, y, makechi2 = 1),
-    #                      passdata = range(settings["n_img"]), verbose = True)
-
-    #print "NM chi^2", F
 
     if settings["iterative_centroid"]:
         assert settings["fitSNoffset"] == 0
@@ -732,32 +642,6 @@ def LM_fit_for_centroids(parsed):
 
     return parsed, Cmat
 
-
-
-def get_loglike(P, all_data):
-    """Compute the log likelihood."""
-    return loglike
-
-def show_model(the_model, all_data, settings):
-    """Make the plots and images."""
-    pass
-
-def initialize_fit(settings, all_data):
-    """Come up with a reasonable place to start the fit/MCMC."""
-    return P
-
-def do_fit(P, all_data, settings):
-    """Run an LBFGS? fit."""
-    return P
-
-def do_MCMC(P, all_data, settings):
-    """Run HMC? sampling."""
-    return samples
-
-def write_results(P, settings):
-    """Save results to a results.txt file."""
-    pass
-
 def time_to_stop(parsed, last_flux, chi2, last_chi2, settings, itr):
     if itr >= settings["n_iter"]:
         print("Reached maximum iterations!")
@@ -782,14 +666,11 @@ if __name__ == "__main__":
 settings = read_paramfile(sys.argv[1])
 settings = finish_settings(settings)
 
-
 all_data = get_PSFs(settings)
 all_data = get_data(settings, all_data)
 
-
 settings["flux_scale"] = scoreatpercentile(all_data["scidata"], 99)
 print('settings["flux_scale"]', settings["flux_scale"])
-
 
 pool = multiprocessing.Pool(processes = settings["n_cpu"])
 
@@ -802,40 +683,11 @@ parsed["sndDec_offset"] = settings["sndDec_offset"]
 parsed["SN_ampl"] = ones(settings["n_epoch"], dtype=float64)*settings["flux_scale"]
 parsed = parseP(unparseP(parsed, settings), settings)
 
-#models = modelfn(parsed)#parsed, all_data, settings)
-
-
 save_img(all_data["invvars"], "invvars.fits")
 save_img(all_data["scidata"], "scidata.fits")
 save_img(all_data["pixel_area_map"], "pixel_area_map_cutout.fits")
-#save_img(all_data["RAs"], "RAs.fits")
-#save_img(all_data["Decs"], "Decs.fits")
 save_img(all_data["pixel_sampled_RAs"], "pixel_sampled_RAs.fits")
 save_img(all_data["pixel_sampled_Decs"],"pixel_sampled_Decs.fits")
-
-"""
-some_RAs = settings["RA0"] + (random.random(size = 100) - 0.5)/3000.
-some_Decs = settings["Dec0"] + (random.random(size = 100) - 0.5)/3000.
-
-from matplotlib import use
-use("PDF")
-import matplotlib.pyplot as plt
-
-
-some_is = array([all_data["RADec_to_i"][52](some_RAs[i], some_Decs[i]) for i in range(100)])
-print some_is.shape
-some_is = some_is[:,0,0]
-print some_is.shape
-
-
-
-plt.scatter(some_RAs, some_Decs, c = some_is)
-plt.xlim(settings["RA0"] - 0.0002, settings["RA0"] + 0.0002)
-plt.ylim(settings["Dec0"] - 0.0002, settings["Dec0"] + 0.0002)
-plt.colorbar()
-plt.savefig("tmp.pdf")
-plt.close()
-"""
 
 last_flux = zeros(len(parsed["SN_ampl"]), dtype=float64) - 2.
 last_chi2 = 1e101
@@ -915,7 +767,11 @@ f.write('\nCmat:\n')
 
 for i in range(settings["n_epoch"]):
     for j in range(settings["n_epoch"]):
-        f.write(str(SNCmat[i,j]) + "  ")
+        try:
+            f.write(str(SNCmat[i,j]) + "  ")
+        except IndexError:
+            print(f'ERROR: SNCmat does not have supernova data')
+            continue
     f.write('\n')
 
 try:
@@ -926,7 +782,11 @@ except:
 f.write('\nWmat:\n')
 for i in range(settings["n_epoch"]):
     for j in range(settings["n_epoch"]):
-        f.write(str(SNWmat[i,j]) + "  ")
+        try:
+            f.write(str(SNWmat[i,j]) + "  ")
+        except IndexError:
+            print(f'ERROR: SNWmat does not have supernova data')
+            continue
     f.write('\n')
 
 f.write("PARSED_JSON_BELOW\n")
@@ -942,16 +802,3 @@ f.write(json.dumps(parsed) + '\n')
 f.close()
 
 print("Done!")
-
-#P = initialize_fit(settings, all_data)
-#P = do_fit(P, all_data, settings)
-#write_results(P, settings)
-#show_model(modelfn(parseP(P, settings), settings), all_data, settings)
-
-# Explicit jacobian requirements:
-# Spitzer: 2000 spline nodes * 1000 pixels * 1000 images * 8 bytes/entry = 16 GB
-# WFC3 IR: 2000 spline nodes * 1000 pixels * 100 images * 8 bytes/entry = 1.6 GB
-
-# Data volume for 5x oversampling: 1000 images * 256**2 * 8 bytes/entry * 2 RA/Dec = 1 GB
-
-# Speed test: 9 ms per model per image at 5x. So 18 s per image to build jacobian explictly (5 hours for Spitzer). Clear approach: parallelize over images.

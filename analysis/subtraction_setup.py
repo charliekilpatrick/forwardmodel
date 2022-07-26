@@ -21,7 +21,7 @@ max_ims = 1000 # 40 # Limit this to limit RAM or CPU time
 
 def setup_subtractions(basedir, channel, ra, dec,
     email='ckilpatrick@northwestern.edu', clobber=True, interactive=True,
-    date_range=[]):
+    date_range=[], offset=[0.0, 0.0], stamp_size=29):
 
     if not interactive and not date_range:
         print('ERROR: need to be in interactive mode or provide a date range')
@@ -162,6 +162,10 @@ def setup_subtractions(basedir, channel, ra, dec,
                 current_epoch += 1
             else:
                 groups[i]['epoch']=0
+    else:
+        print('ERROR: subtraction_setup assumes interactive=True or '+\
+            'date_range is passed.')
+        raise Exception('STOP!')
 
     wd = os.path.join(basedir, 'subtraction')
 
@@ -194,7 +198,10 @@ def setup_subtractions(basedir, channel, ra, dec,
     lines = lines.replace("RRRRR", str(ra))
     lines = lines.replace("DDDDD", str(dec))
 
-    lines = lines.replace("QQQQQ", "29")
+    lines = lines.replace("RRRAOFFSET", str(offset[0]))
+    lines = lines.replace("DDECOFFSET", str(offset[1]))
+
+    lines = lines.replace("QQQQQ", str(stamp_size))
     lines = lines.replace("SSSSS", "31")
     lines = lines.replace("AAAAA", "1")
 
