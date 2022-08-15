@@ -47,34 +47,42 @@ def run_dir(var):
         new_fls.append(fl)
 
     fls = copy.copy(new_fls)
+    nfls = len(fls)
+
+    print(f'We need to reduce {nfls} files for {dr}')
 
     ufls = [fl.replace("cbcd.fits", "cbunc.fits") for fl in fls]
     mfls = [fl.replace("cbcd.fits", "bimsk.fits") for fl in fls]
 
-    write_out_inlist(fls, os.path.join(wd, 'images.list'))
-    write_out_inlist(ufls, os.path.join(wd, 'sigma.list'))
-    write_out_inlist(mfls, os.path.join(wd, 'mask.list'))
+    if not os.path.exists(os.path.join(wd, 'input')):
+        os.makedirs(os.path.join(wd, 'input'))
+
+    write_out_inlist(fls, os.path.join(wd, 'input/images.list'))
+    write_out_inlist(ufls, os.path.join(wd, 'input/sigma.list'))
+    write_out_inlist(mfls, os.path.join(wd, 'input/mask.list'))
 
     os.system(f"cp -r {mopex}/cal {wd}")
     os.system(f"cp -r {mopex}/cdf {wd}")
     os.system(f"cp {mopex}/mopex-script-env.csh {wd}")
 
-    inp = '-I images.list -S sigma.list -d mask.list'
+    inp = '-I input/images.list -S input/sigma.list -d input/mask.list'
 
     with open(os.path.join(wd, 'run.sh'), 'w') as f:
         ch = channel.replace('ch','I')
         f.write(f'cd {wd} \n')
         f.write('source mopex-script-env.csh \n')
-        f.write(f'overlap.pl -n overlap_{ch}.nl {inp} > log1.txt 2>&1 \n')
-        f.write(f'mosaic.pl -n mosaic_{ch}.nl {inp} > log2.txt 2>&1 \n')
+        f.write(f'overlap.pl -n overlap_{ch}.nl {inp} > overlap.log \n')
+        f.write(f'mosaic.pl -n mosaic_{ch}.nl {inp} > mosaic.log \n')
 
     cmd = f"/bin/csh {wd}/run.sh"
     print(cmd)
     print(subprocess.call(cmd, shell=True))
 
-    for subdr in ["BoxOutlier", "Detect", "DualOutlier", "Interp",
-        "Medfilter", "Outlier", "Overlap_Corr", "ReInterp", "cal"]:
-        cmd = f"rm -fr {os.path.join(wd, subdr)}"
+    for subdr in ["BoxOutlier", "ReInterp", "Overlap_Corr", "Detect",
+        "DualOutlier", "Outlier", "Interp", "Medfilter", "Coadd",
+        "Combine", "cal", "cdf", "addkeyword.txt", "*.nl",
+        "*.fits", "FIF.tbl", "header_list.tbl"]:
+        cmd = f"rm -fvr {os.path.join(wd, subdr)}"
         print(cmd)
         os.system(cmd)
 

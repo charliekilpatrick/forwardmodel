@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from astropy.io import fits
+from astropy.time import Time
 from numpy import *
 import gzip
 import pickle
@@ -26,12 +27,12 @@ def create_mopex_cmd(basecmd, idx, channel):
     else:
         cmd += f' -n {basecmd}_{ch}_nofid.nl'
 
-    cmd += ' -I images.list -S sigma.list -d mask.list'
+    cmd += ' -I input/images.list -S input/sigma.list -d input/mask.list'
 
     if idx!=0:
         cmd += ' -F mosaic_fif.tbl'
 
-    cmd += f' > log_{basecmd}.txt'
+    cmd += f' > {basecmd}.log'
 
     return(cmd)
 
@@ -76,6 +77,8 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
     for key in all_data:
         print(f"all_data: {key}")
 
+    settings["images"] = sorted(settings["images"])
+
     print('epoch_names:',settings['epoch_names'])
     print('epochs:',settings['epochs'])
 
@@ -117,6 +120,16 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
         else:
             print("Found no bad images")
 
+        first_file = settings["images"][images_to_work_with[0]]
+        mjd = fits.open(first_file)[0].header['MJD_OBS']
+        aorkey = str(fits.open(first_file)[0].header['AORKEY'])
+        t = Time(mjd, format='mjd')
+        datestr = t.datetime.strftime('ut%y%m%d')
+
+        baseoutname = f'{objname}.{channel}.{datestr}.{aorkey}_stk.fits'
+        baseoutcov = baseoutname.replace('_stk.fits','_cov.fits')
+        baseoutunc = baseoutname.replace('_stk.fits','_unc.fits')
+
         resid_file = os.path.join(basedir, 'residuals.fits')
 
         f = fits.open(resid_file)
@@ -124,9 +137,12 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
         print(f"subtractions shape: {subtractions.shape}")
         f.close()
 
-        f_ilist = open(os.path.join(wd,"images.list"), 'w')
-        f_slist = open(os.path.join(wd,"sigma.list"), 'w')
-        f_mlist = open(os.path.join(wd,"mask.list"), 'w')
+        if not os.path.exists(os.path.join(wd, 'input')):
+            os.makedirs(os.path.join(wd, 'input'))
+
+        f_ilist = open(os.path.join(wd,"input/images.list"), 'w')
+        f_slist = open(os.path.join(wd,"input/sigma.list"), 'w')
+        f_mlist = open(os.path.join(wd,"input/mask.list"), 'w')
 
         total_im = len(images_to_work_with)
         print(f'Writing out {total_im} images')
@@ -202,14 +218,18 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
         f_mopex.write(create_mopex_cmd('overlap', ee, channel)+' \n')
         f_mopex.write(create_mopex_cmd('mosaic', ee, channel)+' \n')
 
-        ename='epoch{0}'.format(str(ee).zfill(3))
-        outmosaicfile=f'Combine/mosaic_{objname}_{ename}_sub.fits'
-        cmd=f"mv -v Combine/mosaic.fits {outmosaicfile}"
-        f_mopex.write(cmd+' \n')
+        cmd1=f"mv -v Combine/mosaic.fits {baseoutname}"
+        cmd2=f"mv -v Combine/mosaic_cov.fits {baseoutcov}"
+        cmd3=f"mv -v Combine/mosaic_unc.fits {baseoutunc}"
+
+        f_mopex.write(cmd1+' \n')
+        f_mopex.write(cmd2+' \n')
+        f_mopex.write(cmd3+' \n')
 
         for subdir_to_remove in ["BoxOutlier", "ReInterp", "Overlap_Corr",
-            "DualOutlier", "Outlier", "Interp"]:
-            f_mopex.write(f"rm -fr {wd}/{subdir_to_remove} \n")
+            "DualOutlier", "Outlier", "Interp", "MedFilter", "Coadd", "Rmask",
+            "Combine", "cal", "cdf", "addkeyword.txt", "*.nl"]:
+            f_mopex.write(f"rm -fvr {wd}/{subdir_to_remove} \n")
 
         try:
             f_mopex.close()

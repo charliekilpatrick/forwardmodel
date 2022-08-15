@@ -161,7 +161,7 @@ def read_image(im, pam, bad_pix_list, exts, settings, RA0, Dec0):
     w = wcs.WCS(f[exts[0]].header)
     pix_xy = w.all_world2pix([[RA0, Dec0]], 1)[0]
 
-    #print("Found xy", im, pix_xy)
+    print("Found xy", im, pix_xy)
     pix_xy = array(around(pix_xy), dtype=int32)
 
     subxs = arange(settings["padsize"], dtype=float64)/settings["oversample"]

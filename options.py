@@ -5,6 +5,9 @@ import numpy as np
 from astropy import units as u
 from astropy.time import Time
 
+def message(msg):
+    print('\n\n'+msg+'\n'+'#'*80+'\n'+'#'*80+'\n\n')
+
 def parse_two_floats(value):
     values = value.split()
     if len(values) != 2:
@@ -115,7 +118,6 @@ def parse_arguments(usage=''):
         args.stamp_size = int(stamp_size)
 
     if args.init_date and args.max_date:
-        print(args.init_date, args.max_date)
         t0 = None
         if is_number(args.init_date):
             # Assume init date is MJD
