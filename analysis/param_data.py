@@ -11,7 +11,7 @@ fitSNoffset         0       # 1 => fit offset
 patch               QQQQQ   # patch size-- must be odd
 fixmodelfromrefs    0       # 1=> fix the model from the references
 use_DQ_list         1
-n_cpu               32
+n_cpu               NNNNN
 n_iter              4
 
 sndRA_offset        RRRAOFFSET   # SNRA - GalRA

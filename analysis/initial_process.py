@@ -25,6 +25,12 @@ def run_dir(var):
         shutil.rmtree(wd)
     os.makedirs(wd)
 
+    # Delete unnecessary files
+    for file in glob.glob(os.path.join(dr, channel, 'bcd/*')):
+        if (('cbcd.fits' not in file) and ('cbunc.fits' not in file) and
+            ('bimsk.fits' not in file)):
+            os.remove(file)
+
     fls = filter0(glob.glob(os.path.join(dr, channel, 'bcd/*cbcd.fits')))
     fls.sort()
 

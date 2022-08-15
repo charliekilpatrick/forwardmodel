@@ -29,6 +29,12 @@ def sort_files(indir, channel='ch1', objname=None):
         mjds.append(mjd)
         objs.append(obj)
 
+        for subdir in glob.glob(os.path.join(dr, '*')):
+            if channel not in subdir:
+                print(f'Deleting {subdir}')
+                shutil.rmtree(subdir)
+
+
     drs = array(drs)
     objs = array(objs)
     mjds = array(mjds)
