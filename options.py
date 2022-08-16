@@ -71,6 +71,8 @@ def parse_arguments(usage=''):
                         help='Declination of region to analyze in images')
     parser.add_argument('--band','--channel', type=str, default='ch1',
                         help='Spitzer/IRAC band to reduce')
+    parser.add_argument('--download', type=str, default=None,
+                        help='Download files for input RA/Dec to input dir.')
     parser.add_argument('--object', type=str, default=None,
                         help='Overwrite object name for all files with object')
     parser.add_argument('--mopex-dir', type=str, default='/data/software/mopex',

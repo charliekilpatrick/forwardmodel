@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # Main wrapper for spitzer_sn pipeline
 # v0.0 by CDK - 7/10/2022
-import sys, os, time
+import sys, os, time, glob, shutil
 
 # See options file to check available command line options
 import options
+import download_spitzer
 
 # Import other modules from repository
 from analysis import sort_files
@@ -18,6 +19,21 @@ if __name__ == '__main__':
 
     command = ' '.join(sys.argv)
     options.message(f'Starting: {command}')
+
+    if args.download:
+        options.message(f'Downloading to: {args.download}')
+        coord = download_spitzer.parse_coord(args.ra, args.dec)
+        download_spitzer.download_from_coord(coord, outdir=args.download)
+
+        # Copy directories from download directory into base directory
+        for subdir in sorted(glob.glob(os.path.join(args.download, 'r*'))):
+            basedirname = os.path.basename(subdir)
+            targdir = os.path.join(args.datadir, basedirname)
+            if not os.path.exists(targdir):
+                print(f'Copying {subdir}->{targdir}')
+                shutil.copytree(subdir, targdir)
+            else:
+                print(f'{targdir} already exists')
 
     # Do file sorting
     options.message('Sorting files in '+args.datadir)

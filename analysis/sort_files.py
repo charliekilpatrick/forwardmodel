@@ -32,7 +32,12 @@ def sort_files(indir, channel='ch1', objname=None):
         for subdir in glob.glob(os.path.join(dr, '*')):
             if channel not in subdir:
                 print(f'Deleting {subdir}')
-                shutil.rmtree(subdir)
+                if os.path.isdir(subdir):
+                    # Remove directory
+                    shutil.rmtree(subdir)
+                else:
+                    # Remove file
+                    os.remove(subdir)
 
 
     drs = array(drs)
@@ -53,6 +58,8 @@ def sort_files(indir, channel='ch1', objname=None):
 
     for i in range(len(drs)):
         outname = f'{objs[i]}:{str(epochs[objs[i]]).zfill(3)}'
+        outname = os.path.basename(outname)
+        outname = os.path.join(indir, outname)
         print(f'Moving {drs[i]}->{outname}')
         shutil.move(drs[i], outname)
         epochs[objs[i]] += 1
