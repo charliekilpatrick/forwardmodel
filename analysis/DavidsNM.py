@@ -1,10 +1,6 @@
 from numpy import *
 import copy
-try:
-    import commands
-except:
-    import subprocess
-import astropy.io.fits as pyfits
+from astropy.io import fits
 import time
 from scipy.sparse import lil_matrix
 
@@ -17,7 +13,7 @@ from scipy.sparse import lil_matrix
 # 1.06: Added wrapper around miniLM, including cov mat return
 # 1.07: Added wrapper around miniNM
 # 1.08: Added option to turn Cmat computation off for miniNM_new
-# 1.1: Jacobian now stored as sparse matrix.
+# 1.10: Jacobian now stored as sparse matrix.
 # 1.11: 'verbose' option for secderiv passed through miniNM_new
 # 1.12: Added 'save_patches'
 # 1.13: Added nan check to miniLM
@@ -33,7 +29,7 @@ from scipy.sparse import lil_matrix
 
 version = 1.22
 
-print("DavidsNM Version ", version)
+print(f"DavidsNM Version {version}")
 
 def eig(the_matrix):
     if any(isnan(the_matrix)):
@@ -41,9 +37,9 @@ def eig(the_matrix):
         return 0, 0, 0
 
     evals, evecs = linalg.eig(the_matrix)
-    
+
     inds = argsort(evals)[::-1]
-    
+
     evecs = transpose(evecs)
     evecs = evecs[inds]
     evals = evals[inds]
@@ -53,16 +49,11 @@ def eig(the_matrix):
 
 def save_img(dat, imname):
 
-    try:
-        subprocess.getoutput("rm -f " + imname)
-    except:
-        commands.getoutput("rm -f " + imname)
-
-    fitsobj = pyfits.HDUList()
-    hdu = pyfits.PrimaryHDU()
+    fitsobj = fits.HDUList()
+    hdu = fits.PrimaryHDU()
     hdu.data = dat
     fitsobj.append(hdu)
-    fitsobj.writeto(imname)
+    fitsobj.writeto(imname, overwrite=True)
     fitsobj.close()
 
 
@@ -86,13 +77,13 @@ def save_patches(patch_list, imname):
     for i in range(len(patch_list)):
         ipos = i % grid1
         jpos = int(floor(i / grid1))
-        
+
         all_data[ipos*patch1 : (ipos + 1)*patch1,
                  jpos*patch2 : (jpos + 1)*patch2] = patch_list[i]
 
         max_i = max(max_i, (ipos + 1)*patch1)
         max_j = max(max_j, (jpos + 1)*patch2)
-        
+
     save_img(all_data[:max_i, :max_j], imname)
 
 
@@ -143,7 +134,7 @@ def f(P, merged_list):
 
 def listsort(pf):
     [P, F] = pf
-    
+
     tmplist = []
     for i in range(len(P)):
         tmplist.append([F[i], P[i].tolist()])
@@ -214,7 +205,7 @@ def secderiv(P, merged_list, displ_list, goal, verbose = True): # goal is delta 
     if verbose:
         print("free_params ", free_params)
         print("displ_params ", displ_params)
-    
+
     W = zeros([len(free_params)]*2, dtype=float64)
 
     minchi = f(P[0], merged_list)
@@ -256,14 +247,14 @@ def secderiv(P, merged_list, displ_list, goal, verbose = True): # goal is delta 
                 F1 = f(P[0] + dP1 - (dP1 + dP2)*0.5, merged_list)
                 F12 = f(P[0] + dP1 + dP2 - (dP1 + dP2)*0.5, merged_list)
                 F2 = f(P[0] + dP2 - (dP1 + dP2)*0.5, merged_list)
-                
+
                 Pcollection.append(P[0] + dP1)
                 Fcollection.append(F1)
                 Pcollection.append(P[0] + dP2)
                 Fcollection.append(F2)
                 Pcollection.append(P[0] + dP1 + dP2)
                 Fcollection.append(F12)
-                
+
                 W[free_params.index(i), free_params.index(j)] = (F12 - F1 - F2 + F0)/(dx[free_params.index(i)]*dx[free_params.index(j)])
                 W[free_params.index(j), free_params.index(i)] = W[free_params.index(i), free_params.index(j)]
 
@@ -280,7 +271,7 @@ def secderiv(P, merged_list, displ_list, goal, verbose = True): # goal is delta 
 def fillindx(dx, free_params, displ_list):
     tmp_dx = zeros(  len(displ_list), dtype=float64)
 
-    
+
     for i in range(len(free_params)):
         tmp_dx[free_params[i]] = dx[i]
     return tmp_dx
@@ -299,7 +290,7 @@ def better_secderiv(P, merged_list, displ_list, goal): # goal is delta chi2 from
             displ_params.append(abs(displ_list[i]))
     print("free_params ", free_params)
     print("displ_params ", displ_params)
-    
+
     W = zeros([len(free_params)]*2, dtype=float64)
 
     minchi = f(P[0], merged_list)
@@ -313,7 +304,7 @@ def better_secderiv(P, merged_list, displ_list, goal): # goal is delta chi2 from
 
 
 
-        
+
     for k in range(2):
 
 
@@ -389,7 +380,7 @@ def better_secderiv(P, merged_list, displ_list, goal): # goal is delta chi2 from
         print("eig_vec")
         print(eig_vec)
 
-        
+
         dx = eig_vec
 
 
@@ -399,7 +390,7 @@ def better_secderiv(P, merged_list, displ_list, goal): # goal is delta chi2 from
     print("Weight Matrix ")
     print(W)
 
-    
+
 
 
     return W
@@ -421,7 +412,7 @@ def linfit(x1, y1, x2, y2, targ, limit1, limit2):
 
     if bestguess < limit1 and bestguess < limit2: # too low
         bestguess = min(limit1, limit2)
-    
+
     return bestguess
 
 def minos_f(ministarts, minioffsets, merged_list, dx, pos):
@@ -433,7 +424,7 @@ def minos_f(ministarts, minioffsets, merged_list, dx, pos):
     try:
         len(pos)
         tmpstarts += pos*dx
-        
+
         if any(tmpstarts*pos != tmpstarts[0]*pos):
             print("tmpstarts are conflicting!")
             print("tmpstarts ", tmpstarts)
@@ -441,7 +432,7 @@ def minos_f(ministarts, minioffsets, merged_list, dx, pos):
             sys.exit(1)
     except:
         tmpstarts[:,pos] += dx
-        
+
         if any(tmpstarts[:,pos] != tmpstarts[0,pos]):
             print("tmpstarts are conflicting!")
             print("tmpstarts ", tmpstarts)
@@ -467,12 +458,12 @@ def minos_f(ministarts, minioffsets, merged_list, dx, pos):
 
 
 
-    
+
 def minos(Pmins, minioffsets, chi2fn, dx, targetchi2, pos, minichi2, inlimit = lambda x: 1, passdata = None): #Pmins, minioffsets are lists of starting conditions
     """This is the version to use, not the newer one."""
     merged_list = [chi2fn, inlimit]
     merged_list.extend([passdata])
-    
+
     toohigh = 0.0
     toolow = 0.0
     toohighchi2 = 0.0
@@ -494,9 +485,9 @@ def minos(Pmins, minioffsets, chi2fn, dx, targetchi2, pos, minichi2, inlimit = l
     chi2list = []
 
     minostries = 0
-    
+
     while abs(cur_chi - targetchi2) > 0.000001 and abs(toohigh - toolow) > 0.00001*abs(toohigh) or toohigh == 0.0 or toolow == 0.0:
-        
+
         dxscale *= 1.5
         print("[abs(cur_chi - targetchi2), max(abs(toohigh - toolow))] ", [abs(cur_chi - targetchi2), abs(toohigh - toolow)])
 
@@ -530,7 +521,7 @@ def minos(Pmins, minioffsets, chi2fn, dx, targetchi2, pos, minichi2, inlimit = l
                 dx = (toohigh + toolow)/2.
                 print("dx the slow way ", dx)
 
-        
+
         [cur_chi, bestP] = minos_f(Pmins, minioffsets, merged_list, dx, pos)
         if cur_chi < minichi2:
             print("You didn't converge the starting fit!")
@@ -543,7 +534,7 @@ def minos(Pmins, minioffsets, chi2fn, dx, targetchi2, pos, minichi2, inlimit = l
 
     print("Finished getting dx")
     return [dx, bestP]
-    
+
 
 
 def better_minos(P0, Pstart, minioffset, merged_list, dx, target_chi2, verbose):
@@ -553,21 +544,21 @@ def better_minos(P0, Pstart, minioffset, merged_list, dx, target_chi2, verbose):
     minos_params = [target_chi2, dx, P0, merged_list[0]]
     newmerged_list.append(minos_params)
 
-    
+
     newmerged_list[0] = better_minos_chi2fn
 
     [P, F] = miniNM(Pstart, [1.e-6, 0.], newmerged_list, minioffset, verbose)
 
     return [dot(P[0] - P0, dx)/sqrt(dot(dx, dx)), P[0] - P0, merged_list[0](P[0], merged_list[2:])]
-    
+
 def better_minos_chi2fn(P, merged_list):
     minos_params = merged_list[-1]
 
     [target_chi2, dx, P0, chi2fn] = minos_params
-    
+
     chi2 = chi2fn(P, merged_list[:-1])
 
-    
+
     gradient = -dot(P - P0, dx)/dot(dx, dx)
     if abs(gradient) > 1.e2:
         return 0.
@@ -576,7 +567,7 @@ def better_minos_chi2fn(P, merged_list):
     return chi2 + smoothprior(chi2 - target_chi2) + gradient + 1.e5
 
 
-    
+
 def improve(pf, merged_list):#P is sorted lowest chi2 to highest
     [P, F] = pf
 
@@ -585,10 +576,10 @@ def improve(pf, merged_list):#P is sorted lowest chi2 to highest
 
 
 
-    
+
     W = P[-1]
     fW = F[-1]
-    
+
     R = M + M - W
     E = R + (R - M)
 
@@ -606,7 +597,7 @@ def improve(pf, merged_list):#P is sorted lowest chi2 to highest
             F[-1] = fR
             return [P, F]
 
-    
+
     C1 = 0.5*(M + W)
     C2 = 0.5*(M + R)
 
@@ -627,7 +618,7 @@ def improve(pf, merged_list):#P is sorted lowest chi2 to highest
     for i in range(1,len(P)):
         P[i] = 0.5*(P[0] + P[i])
         F[i] = f(P[i], merged_list)
-    
+
     return [P, F]
 
 
@@ -644,13 +635,13 @@ def get_start(P0, displ_list, merged_list):
         if displ_list[i] != 0.:
 
             P[j,i] += displ_list[i]
-            
+
             if merged_list[1](P[j]) == 1: # merged_list[1] is inlimit
                 F.append(f(P[j], merged_list))
             else:
                 print("Changing sign! ", displ_list[i])
                 P[j,i] -= 2.*displ_list[i]
-                
+
                 if merged_list[1](P[j]) == 1: # merged_list[1] is inlimit
                     print("Change worked!")
                     F.append(f(P[j], merged_list))
@@ -664,18 +655,18 @@ def get_start(P0, displ_list, merged_list):
     [P, F] = listsort([P, F])
 
     return [P, F]
-        
+
 
 
 def miniNM(P0, e, merged_list, displ_list, verbose, maxruncount = 15, negativewarning = True, maxiter = 100000):
     runcount = 0
-    
+
     print("maxruncount ", maxruncount)
 
 
     old_F = -1.
     F = [-2.]
-    
+
     while runcount < maxruncount and old_F != F[0]:
         [P, F] = get_start(P0, displ_list, merged_list)
         if len(F) != len(P): # Started against a limit
@@ -695,7 +686,7 @@ def miniNM(P0, e, merged_list, displ_list, verbose, maxruncount = 15, negativewa
         else:
             tmpe = e[0] # Just checking previous result
             tmpe2 = e[1]
-            
+
 
         while (F[-1] > F[0] + tmpe and
                k < maxiter and
@@ -706,7 +697,7 @@ def miniNM(P0, e, merged_list, displ_list, verbose, maxruncount = 15, negativewa
             [P, F] = improve([P, F], merged_list) # Run an iteration
             [P, F] = listsort([P, F])
 
-            
+
             if last_F == F[0] or F[0] == old_F:
                 noimprovement += 1
             else:
@@ -714,25 +705,25 @@ def miniNM(P0, e, merged_list, displ_list, verbose, maxruncount = 15, negativewa
                 tmpe = e[0]/10. # If improvement, run extra
                 tmpe2 = e[1]/10.
 
-                
+
             if verbose == 1:
                 print(P[0], F[0], F[-1] - F[0], k, noimprovement)
-                
+
             if F[0] < -1.e-8 and negativewarning:
                 print("F ", F)
                 print("P ", P)
                 print("Negative Chi2")
                 sys.exit(1.)
-                
+
             k += 1
 
 
         if verbose != -1:
             print("iter F[0]", k, F[0])
 
-        
+
         P0 = P[0].tolist()
-                    
+
         runcount += 1
 
     return [P, F]
@@ -750,19 +741,19 @@ def miniNM_new(ministart, miniscale, passdata, chi2fn = None, residfn = None, in
         ministart = ministart.tolist()
     except:
         pass
-    
+
     [P, F] = miniNM(ministart, tolerance, [chi2fn, inlimit, passdata], miniscale, verbose = verbose, maxruncount = maxruncount, negativewarning = negativewarning, maxiter = maxiter)
 
     if compute_Cmat:
         [Wmat, NA, NA] = secderiv(P, [chi2fn, inlimit, passdata], miniscale, 1.e-1, verbose = verbose)
     else:
         Wmat = []
-        
+
     Cmat = None
     if len(Wmat) > 0:
         if linalg.det(Wmat) != 0:
             Cmat = linalg.inv(Wmat)
-            
+
     return P[0], F[0], Cmat
 
 
@@ -808,11 +799,11 @@ def Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params, displ_list,
             arg_list.append((get_pad_params(dparams, displ_list, params), merged_list))
 
         Jtmp = pool.map(modelfn, arg_list)
-        
+
         Jtmp = [(Jtmp[j] - base_mod_list)/unpad_offsetparams[j] for j in range(len(unpad_params))]
         J = transpose(array(Jtmp))
-        
-        
+
+
     if not use_dense_J:
         J = lil_matrix(J)
         J = J.tocsr()
@@ -823,8 +814,8 @@ def Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params, displ_list,
 
 def get_pad_params(unpad_params, displ_list, params):
     pad_params = copy.deepcopy(params)
-    
-    
+
+
     #for i in range(len(displ_list)):
     #    if displ_list[i] == 0:
     #        pad_params = insert(pad_params, i, params[i])
@@ -841,7 +832,7 @@ def get_unpad_params(pad_params, displ_list):
     unpad_params = unpad_params.compress(displ_list != 0)
 
     return unpad_params
-    
+
 
 def chi2fromresid(resid, Wmat):
     if Wmat == None:
@@ -855,11 +846,11 @@ def chi2fromresid(resid, Wmat):
     else:
         return chi2
 
-       
+
 def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam = 100000, Wmat = None, jacobian_name = "Jacob.fits", return_wmat = False, use_dense_J = False, pool = None, save_jacobian = True):
     params = array(params, dtype=float64)
     displ_list = array(displ_list, dtype=float64)
-    
+
     # fix_list -- 1 = fix
 
     merged_list = copy.deepcopy(orig_merged_list)
@@ -885,7 +876,7 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
     unpad_params = get_unpad_params(params, displ_list)
     if verbose:
         print("unpad_params ", unpad_params)
-    
+
     itercount = 0
     was_just_searching = 0
     while lam < maxlam and itercount < maxiter:
@@ -910,7 +901,7 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
             JtJ = Jacobt.dot(Jacob)
             if not use_dense_J:
                 JtJ = JtJ.todense()
-        else: 
+        else:
             try:
                 JtJ = Jacobt.dot(transpose(Jacobt.dot(Wmat)))
             except:
@@ -920,10 +911,10 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
         if verbose:
             print("Dot end ", time.asctime())
 
-        
-            
+
+
         JtJ_lam = copy.deepcopy(JtJ)
-        
+
         for i in range(len(JtJ)):
             JtJ_lam[i,i] *= (1. + lam)
         try:
@@ -932,7 +923,7 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
             else:
                 delta1 = -linalg.solve(JtJ_lam, Jacobt.dot(dot(Wmat, curchi2)))
         except:
-            
+
             print("Uninvertible Matrix!")
             if save_jacobian:
                 #Jdense = Jacob.todense()
@@ -949,9 +940,9 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
             return [
                 array([get_pad_params(unpad_params, displ_list, params)],dtype=float64),
                 array([chi2fromresid(curchi2, Wmat), -1], dtype=float64)] + [Jacob.todense()]*return_wmat
-            
+
         JtJ_lam2 = copy.deepcopy(JtJ)
-        
+
         for i in range(len(JtJ)):
             JtJ_lam2[i,i] *= (1. + lam/lamscale)
         if Wmat == None:
@@ -974,7 +965,7 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
             curchi2 = chi2_2
             unpad_params = unpad_params + delta2
             lam /= lamscale
-     
+
         elif chi2fromresid(chi2_1, Wmat) < chi2fromresid(curchi2, Wmat):
             curchi2 = chi2_1
             unpad_params = unpad_params + delta1
@@ -982,15 +973,15 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
 
             itercount -= 1
             was_just_searching = 1
-            
+
             while (chi2fromresid(chi2_1, Wmat) >= chi2fromresid(curchi2, Wmat) and lam < maxlam) or isnan(chi2fromresid(chi2_1, Wmat)):
 
                 if verbose:
                     print("Searching... ", lam)
                 lam *= lamscale
-                
+
                 JtJ_lam = copy.deepcopy(JtJ)
-                
+
                 for i in range(len(JtJ)):
                     JtJ_lam[i,i] *= (1. + lam)
 
@@ -1005,7 +996,7 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
                 else:
                     chi2_1 = modelfn((unpad_params1, merged_list))
 
- 
+
 
         if verbose:
             print("itercount, unpad_params, lam, curchi2 ", itercount, unpad_params, lam, chi2fromresid(curchi2, Wmat))
@@ -1019,7 +1010,7 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
     return [
         array([get_pad_params(unpad_params, displ_list, params)],dtype=float64),
               array([chi2fromresid(curchi2, Wmat)],dtype=float64)] + [JtJ]*return_wmat
-        
+
 
 def miniLM_new(ministart, miniscale, residfn, passdata, verbose = False, maxiter = 150, maxlam = 100000, Wmat = None, jacobian_name = "Jacob.fits", use_dense_J = False, return_Cmat = True, pad_Cmat = False, pool = None, save_jacobian = False):
     [P, F, param_wmat] = miniLM(ministart, [residfn, None, passdata], miniscale, verbose, maxiter = maxiter, maxlam = maxlam, Wmat = Wmat, jacobian_name = jacobian_name, return_wmat = True, use_dense_J = use_dense_J, pool = pool, save_jacobian = save_jacobian)
@@ -1035,20 +1026,10 @@ def miniLM_new(ministart, miniscale, residfn, passdata, verbose = False, maxiter
         Cmat = None
     return P[0], F[0], Cmat
 
-
-
-# End L-M
-
-
-
-
-
-
-
 def miniGN(params, orig_merged_list, displ_list, verbose, pool = None):
     params = array(params, dtype=float64)
     displ_list = array(displ_list, dtype=float64)
-    
+
     # fix_list -- 1 = fix
 
     merged_list = copy.deepcopy(orig_merged_list)
@@ -1065,13 +1046,13 @@ def miniGN(params, orig_merged_list, displ_list, verbose, pool = None):
     converged = 0
 
     curchi2 = modelfn(params, merged_list)
-    
+
     unpad_offsetparams = get_unpad_params(array(displ_list, dtype=float64), displ_list)*1.e-6
 
 
     unpad_params = get_unpad_params(params, displ_list)
     print("unpad_params ", unpad_params)
-    
+
     itercount = 0
     while itercount < maxiter:
         itercount += 1
@@ -1079,7 +1060,7 @@ def miniGN(params, orig_merged_list, displ_list, verbose, pool = None):
 
         if verbose:
             print(len(unpad_offsetparams), len(unpad_params), len(displ_list), len(params), len(curchi2))
-        
+
         Jacob = Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params, displ_list, params, len(curchi2), use_dense_J, pool = pool)
 
         if verbose:
@@ -1092,15 +1073,15 @@ def miniGN(params, orig_merged_list, displ_list, verbose, pool = None):
 
         chi2_1 = 1.e10
         lam = 1.e-10
-        
+
         JtJ_lam = copy.deepcopy(JtJ)
-        
-        
+
+
         try:
             print("delta1")
             delta1 = -dot(linalg.inv(JtJ_lam), dot(Jacobt, curchi2))
         except:
-            
+
             print("Uninvertible Matrix!")
             return [
                 array([get_pad_params(unpad_params, displ_list, params)],dtype=float64),
@@ -1122,358 +1103,11 @@ def miniGN(params, orig_merged_list, displ_list, verbose, pool = None):
                 if verbose:
                     print("lam ", lam)
 
-            
+
 
         if verbose:
             print("itercount, unpad_params, lam, curchi2 ", itercount, unpad_params, lam, sum(curchi2**2.))
-            
+
     return [
         array([get_pad_params(unpad_params, displ_list, params)],dtype=float64),
               array([sum(curchi2**2.)],dtype=float64)]
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Fitting Tangent Parab doesn't always work:
-
-
-
-
-
-"""
-
-def parabchi2(P, merged_list):
-    chi2list = parabmodel(P, merged_list)
-    chi2 = merged_list[2]
-
-    return dot(chi2list - chi2, chi2list - chi2)
-
-
-def inlimit_parabchi2(x):
-
-    
-    if abs(x[-1] - bestSNF) > 0.1:
-        return 0
-
-    #nparams =  int(round(   (-3 + sqrt(1 + 8*len(x)))/2   )) # not so pretty
-
-
-
-    fitted_cov = params_to_matrix(x)
-    fitted_cov_unpad = unpadm(fitted_cov, fixlist)
-    
-
-    for i in range(len(fitted_cov_unpad)):
-        if fitted_cov_unpad[i, i] <= 0.:
-            #print "inlimit1"
-            return 0
-
-
-    for i in range(len(fitted_cov_unpad)):
-        for j in range(i + 1, len(fitted_cov_unpad)):
-            if abs(fitted_cov_unpad[i, j]) >= 0.8*sqrt(fitted_cov_unpad[i, i]*fitted_cov_unpad[j, j]): #no correlations larger than 0.8
-                #print "inlimit2 ", i, j
-
-                return 0
-
-
-    try:
-        fitted_W = linalg.inv(fitted_cov_unpad) #Must be invertible
-    except:
-        #print "inlimit3"
-
-        return 0
-    return 1
-
-
-def unpadm(padmatrix, fixlist):
-    # unpadds matrix to get rid of fixed parameters
-
-    #1 = fixed
-
-    returnmatrix = copy.deepcopy(padmatrix)
-
-    tmprange = range(len(fixlist))
-    tmprange.reverse()
-    
-    for i in tmprange:
-        if fixlist[i] == 1:
-            returnmatrix = delete(returnmatrix, i, 0)
-            returnmatrix = delete(returnmatrix, i, 1)
-                        
-    return returnmatrix
-
-
-def padm(unpadmatrix, fixlist):
-    returnmatrix = copy.deepcopy(unpadmatrix)
-
-    tmprange = range(len(fixlist))
-    tmprange.reverse()
-    
-    for i in tmprange:
-        if fixlist[i] == 1:
-            returnmatrix = insert(returnmatrix, i, zeros(returnmatrix.shape[0]), 0)
-            returnmatrix = insert(returnmatrix, i, zeros(returnmatrix.shape[0]), 1)
-                        
-    return returnmatrix
-    
-
-
-def fit_covmatrix(newmerged_list, bestSNP, bestSNF, Wderiv, offdiag_scale):
-
-    nparams = newmerged_list[2]
-
-    
-    covparams = zeros(nparams*(nparams + 1)/2, dtype = float64)
-
-    
-
-    Covderiv = linalg.inv(Wderiv)
-
-    for i in range(len(Covderiv)):
-        for j in range(len(Covderiv)):
-            if i != j:
-                maxcov = 0.75*sqrt(abs(Covderiv[i, i]*Covderiv[j, j]))
-                if abs(Covderiv[i, j]) > maxcov:
-                    Covderiv[i, j] = sign(Covderiv[i, j])*maxcov
-    
-    Covderivpad = padm(Covderiv, fixlist)
-    count = 0
-
-    covoffset = []
-    for i in range(nparams):
-        for j in range(i, nparams):
-            
-            #diagonal
-
-            if Covderivpad[i, j] == 0:
-                covparams[count] = 0.
-                covoffset.append(0.)
-
-            else:
-                if i == j:
-                    covparams[count] = abs(Covderivpad[i, i])
-                    covoffset.append(covparams[count]/10.) # guess in the direction of larger
-                else:
-                    covparams[count] = Covderivpad[i, j]*offdiag_scale
-                    covoffset.append(-covparams[count]/10.) # guess in the direction of smaller
-
-
-            
-            count += 1
-
-
-    print covparams
-
-
-    print len(covoffset)
-    
-    ministart = bestSNP.tolist() + covparams.tolist() + [bestSNF]
-    minioffset = [0.0]*(nparams) + covoffset + [0.0]
-
-
-    print "ministart ", ministart
-    print "minioffset ", minioffset
-
-    [P, F] = miniNM(ministart, [1.e-20, 1.e-10], newmerged_list, minioffset, 0)
-
-    oldF = F[0]*2.
-
-    runs = 0
-    while F[0] < 0.99*oldF and runs < 10 - 7*(F[0] < 1.): # stop early if F < 1
-        print "runs ", runs
-        oldF = F[0]
-
-
-        P[0][nparams:-1] = clip_params(P[0])
-        minioffsetmatrix = params_to_matrix(P[0])
-        
-        
-        for i in range(nparams):
-            for j in range(nparams):
-                if minioffsetmatrix[i, j] != 0.:
-                    if i == j:
-                        minioffsetmatrix[i, j] = minioffsetmatrix[i, j]*0.1
-                    else:
-                        minioffsetmatrix[i, j] = -minioffsetmatrix[i, j]*0.1
-        minioffset = [0.]*nparams + matrix_to_params(minioffsetmatrix).tolist() + [0.]
-
-        print "minioffset ", minioffset
-        print "ministart ", P[0].tolist()
-        [P, F] = miniNM(P[0].tolist(), [1.e-20, 1.e-10], newmerged_list, minioffset, 0)
-        runs += 1
-    # this is tens of thousands of iterations-- don't use verbose
-
-    print "P[0] and F[0]"
-    print P[0]
-    print F[0]
-
-
-    fitted_cov = params_to_matrix(P[0])
-
-    print "fitted_cov"
-    print fitted_cov
-    print "err_from_cov"
-    print err_from_cov(fitted_cov)
-
-    print "fitted_W"
-
-    fitted_cov_unpad = unpadm(fitted_cov, fixlist)
-    fitted_W = linalg.inv(fitted_cov_unpad)
-    print fitted_W
-
-
-
-    fitted_cor = zeros([len(fitted_cov_unpad), len(fitted_cov_unpad)], dtype=float64)
-    for i in range(len(fitted_cor)):
-        for j in range(len(fitted_cor)):
-            fitted_cor[i, j] = fitted_cov_unpad[i, j]/sqrt(fitted_cov_unpad[i, i]*fitted_cov_unpad[j, j])
-
-    print "fitted_cor"
-    print fitted_cor
-
-
-
-
-    return [fitted_cov, fitted_W, fitted_cor, P[0], F[0]]
-
-def clip_params(P):
-    thematrix = params_to_matrix(P)
-    for i in range(len(thematrix)):
-        for j in range(len(thematrix)):
-            if i != j:
-                if thematrix[i, j] != 0.:
-                    corr = thematrix[i, j]/sqrt(thematrix[i,i]*thematrix[j,j])
-                    if abs(corr) >= 0.8: # 0.79 to allow for rounding errors
-                        print "Clipping ", i, j, corr
-                        thematrix[i, j] = sign(thematrix[i, j])*0.79*sqrt(thematrix[i, i]*thematrix[j, j])
-    return matrix_to_params(thematrix)
-
-def params_to_matrix(P):
-    count = nparams
-    
-    thematrix = zeros([nparams, nparams], dtype=float64)
-
-    for i in range(nparams):
-        for j in range(i, nparams):
-            thematrix[i, j] = P[count]
-            thematrix[j, i] = P[count]
-            count += 1
-    return thematrix
-
-def matrix_to_params(thematrix):
-    P = []
-    for i in range(nparams):
-        for j in range(i, nparams):
-            P.append(thematrix[i, j])
-    return array(P, dtype=float64)
-
-
-def parabmodel(P, merged_list):
-    #newmerged_list = [parabchi2, inlimit_parabchi2, nparams, Pcollection, Fcollection]
-
-    
-    nparams = merged_list[0]
-    
-    centroid = P[:nparams]
-    
-    fitted_cov = params_to_matrix(P)
-    fitted_cov_unpad = unpadm(fitted_cov, fixlist)
-
-    try:
-        fitted_W_unpad = linalg.inv(fitted_cov_unpad)
-    except:
-        print "Singular; error in inlimit?", fitted_cov_unpad
-        return 1.e20
-    fitted_W = padm(fitted_W_unpad, fixlist)
-
-    offset = P[nparams + nparams*(nparams + 1)/2]
-
-    chi2list = []
-
-    for i in range(len(merged_list[1])):
-        P = merged_list[1][i] # the evaluation point
-            
-        if len(P) == len(centroid) + 1:
-            P = P[:-1] # remove the last element
-            
-        
-        res = P - centroid
-
-
-        chi2list.append(dot(res, dot(fitted_W, res)) + offset)
-
-    return array(chi2list, dtype = float64)
-        
-"""
-
-
-
-
-
-
-
-# End
-
-
-
-
-"""
-def inlimit(x):
-    return 1
-
-def chi2fn(P, merged_list):
-    chi2 = P[0]**2. + (0.9*P[0] - P[1])**2. + 3.*P[2]**2. + 0.2*P[3]**2. - 0.1*(P[0] - P[2])**2
-
-    return chi2
-
-merged_list=[chi2fn,inlimit]
-ministart = [1., 2.,3.,1.]
-minioffset = [1., 1., 1., 1.]
-              
-[P, F] = miniNM(ministart, [1.e-9, 0.], merged_list, minioffset, 0)
-
-print P
-print F
-
-[Wmat, NA, NA] = secderiv(P, merged_list, minioffset, 1.e-2)
-print linalg.inv(Wmat)
-print err_from_cov(linalg.inv(Wmat))
-
-#print better_minos(P[0], minioffset, merged_list, array([1., 0., 0., 0.]), F[0] + 1. , 0)
-#print better_minos(P[0], minioffset, merged_list, array([-1., 0., 0., 0.]), F[0] + 1. , 0)
-
-#print better_minos(P[0], minioffset, merged_list, array([0., 1., 0., 0.]), F[0] + 1. , 0)
-
-minos_minioffset = copy.deepcopy(minioffset)
-
-minos_minioffset[2] = 0.0
-initialdx = 1
-
-dx = minos([P[0].tolist()], [minos_minioffset], merged_list, initialdx, F[0] + 1., 2, -1) # 2nd parameter
-dx = minos([P[0].tolist()], [minos_minioffset], merged_list, initialdx, F[0] + 1., array([0., 0., 1., 0.]), -1) # 2nd parameter
-
-print 'dx'
-print dx
-print P,F
-"""
-
-"""
-
-#test:
-def chi2fn(x, merged_list):
-    return x[0]**2. + 0.2*x[1]**2. + x[1]*x[0]*0.1 + x[1]**3. - x[1]*x[0]**3.
-
-Hessian([1, 2], [0.00001, 0.00001], [chi2fn])
-"""
-             
