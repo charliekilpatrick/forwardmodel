@@ -4,14 +4,16 @@
 import sys, os, time, glob, shutil
 
 # See options file to check available command line options
-import options
-import download_spitzer
+# download_spitzer has methods for grabbing all data files from SHA
+from common import options
+from common import download_spitzer
 
 # Import other modules from repository
 from analysis import sort_files
 from analysis import initial_process
 from analysis import subtraction_setup
 from analysis import insert_into_subtractions
+from analysis import forward_model
 
 if __name__ == '__main__':
     start = time.time()
@@ -57,14 +59,13 @@ if __name__ == '__main__':
         args.ra, args.dec, email=args.email, clobber=clobber,
         interactive=args.interactive, date_range=args.date_range,
         offset=args.sn_offset, stamp_size=args.stamp_size,
-        nprocesses=args.nprocesses)
+        nprocesses=args.nprocesses, prf_version=args.prf_version)
 
     # Run new_phot.py script
     options.message('Running photometry script')
     basedir=args.datadir
-    cmd = f'new_phot.py {run_file} > {basedir}/new_phot_initial.out'
-    print(f'Running: {cmd}')
-    os.system(cmd)
+    fm = forward_model.forward_model(run_file)
+    fm.do_main_reduction(fm.parsed, fm.settings)
 
     options.message('Subtracting models from data')
     run_files = insert_into_subtractions.insert_into_subtractions(args.datadir,

@@ -71,7 +71,7 @@ def run_dir(var):
     os.system(f"cp -r {mopex}/cdf {wd}")
     os.system(f"cp {mopex}/mopex-script-env.csh {wd}")
 
-    inp = '-I input/images.list -S input/sigma.list -d input/mask.list'
+    inp = f'-I input/images.list -S input/sigma.list -d input/mask.list -O {wd}'
 
     with open(os.path.join(wd, 'run.sh'), 'w') as f:
         ch = channel.replace('ch','I')
