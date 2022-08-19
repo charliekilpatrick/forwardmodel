@@ -10,7 +10,7 @@ import os
 import glob
 import shutil
 
-def create_mopex_cmd(basecmd, idx, channel):
+def create_mopex_cmd(basecmd, idx, channel, wd):
 
     cmd = ''
     if '.pl' not in basecmd:
@@ -28,6 +28,7 @@ def create_mopex_cmd(basecmd, idx, channel):
         cmd += f' -n {basecmd}_{ch}_nofid.nl'
 
     cmd += ' -I input/images.list -S input/sigma.list -d input/mask.list'
+    cmd += f' -O {wd}'
 
     if idx!=0:
         cmd += ' -F mosaic_fif.tbl'
@@ -215,8 +216,8 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
 
         f_mopex.write(f"cd {wd} \n")
         f_mopex.write("source mopex-script-env.csh \n")
-        f_mopex.write(create_mopex_cmd('overlap', ee, channel)+' \n')
-        f_mopex.write(create_mopex_cmd('mosaic', ee, channel)+' \n')
+        f_mopex.write(create_mopex_cmd('overlap', ee, channel, wd)+' \n')
+        f_mopex.write(create_mopex_cmd('mosaic', ee, channel, wd)+' \n')
 
         cmd1=f"mv -v Combine/mosaic.fits {baseoutname}"
         cmd2=f"mv -v Combine/mosaic_cov.fits {baseoutcov}"

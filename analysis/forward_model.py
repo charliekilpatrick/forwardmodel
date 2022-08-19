@@ -9,7 +9,7 @@ from scipy.interpolate import interp2d, SmoothBivariateSpline
 from scipy.stats import scoreatpercentile
 from astropy import wcs
 from scipy import fftpack as ft
-from analysis.DavidsNM import save_img, miniLM_new, miniNM_new
+from DavidsNM import save_img, miniLM_new, miniNM_new
 import gzip
 import pickle
 import time
@@ -197,9 +197,8 @@ class forward_model():
 
     def save_imgs(self, all_data, basedir):
 
-        print(list(all_data.keys()))
-        for imgtype in ['invvars','scidata','pixel_area_map','pixel_sampled_RAs'
-            'pixel_sampled_Decs']:
+        for imgtype in ['invvars','scidata','pixel_area_map',
+            'pixel_sampled_RAs', 'pixel_sampled_Decs']:
             if imgtype in all_data.keys():
                 imgname = os.path.join(basedir, imgtype+'.fits')
                 print(f'Saving: {imgname}')
