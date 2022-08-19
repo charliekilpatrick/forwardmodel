@@ -14,6 +14,8 @@ import gzip
 import pickle
 import time
 import json
+import ray
+ray.init()
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -586,6 +588,7 @@ class forward_model():
         return pixelized_psf
 
 
+    @ray.remote
     def indiv_model(self, args):
         [i, parsed, just_pt_flux] = args
 
@@ -661,12 +664,8 @@ class forward_model():
         if im_ind == None:
             im_ind = list(range(self.settings["n_img"]))
 
-        pool = multiprocessing.Pool(processes = self.settings["n_cpu"])
-
-        models = pool.map(self.indiv_model,
-            [(i, parsed, just_pt_flux) for i in im_ind])
-
-        pool.close()
+        models = ray.get([self.indiv_model.remote((i, parsed, just_pt_flux))
+            for i in im_ind])
 
         return array(models)
 
