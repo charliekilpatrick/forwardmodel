@@ -9,7 +9,7 @@ from scipy.interpolate import interp2d, SmoothBivariateSpline
 from scipy.stats import scoreatpercentile
 from astropy import wcs
 from scipy import fftpack as ft
-from DavidsNM import save_img, miniLM_new, miniNM_new
+from analysis.DavidsNM import save_img, miniLM_new, miniNM_new
 import gzip
 import pickle
 import time
@@ -664,8 +664,9 @@ class forward_model():
         if im_ind == None:
             im_ind = list(range(self.settings["n_img"]))
 
-        models = ray.get([self.indiv_model.remote((i, parsed, just_pt_flux))
-            for i in im_ind])
+        futures = [self.indiv_model.remote((i, parsed, just_pt_flux))
+            for i in im_ind]
+        models = ray.get(futures)
 
         return array(models)
 
