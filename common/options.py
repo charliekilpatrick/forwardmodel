@@ -97,6 +97,8 @@ def parse_arguments(usage=''):
     parser.add_argument('--sn-offset', action='store', type=float,
                   help='Offsets (in RA/Dec) between input RA/Dec and target',
                   default=[0.0, 0.0], nargs=2)
+    parser.add_argument('--cluster', default=False, action='store_true',
+                        help='Run forward_model in cluster mode')
     parser.add_argument('--email', type=str,
         default='ckilpatrick@northwestern.edu',
         help='Email to message when subtraction process is finished')
