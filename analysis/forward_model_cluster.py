@@ -9,7 +9,12 @@ from scipy.interpolate import interp2d, SmoothBivariateSpline
 from scipy.stats import scoreatpercentile
 from astropy import wcs
 from scipy import fftpack as ft
-from DavidsNM import save_img, miniLM_new, miniNM_new
+# For some reason the code sometimes wants full analysis.DavidsNM and other
+# times DavidsNM
+try:
+    from analysis.DavidsNM import save_img, miniLM_new, miniNM_new
+except:
+    from DavidsNM import save_img, miniLM_new, miniNM_new
 import gzip
 import pickle
 import time

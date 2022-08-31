@@ -1,7 +1,48 @@
-import os
+import os, glob
+from astropy.io import fits
+from astropy.table import Table
 
 analysis_dir = os.path.dirname(os.path.realpath(__file__))
-data_dir = os.path.join(analysis_dir, '../data')
+data_dir = os.path.abspath(os.path.join(analysis_dir, '../data'))
+
+def get_all_prf_data():
+    prfs = glob.glob(os.path.join(data_dir, '*prf*.fits'))
+    table = Table([['X'*100],[0],[0],['X'*100],['X'*10],['X'*20],['X'*10],[0],[0]],
+        names=('file','channel','version','origfile','grid','size','type',
+            'oversample','iter')).copy()[:0]
+    for prf in prfs:
+
+        hdu = fits.open(prf)
+        size = str(hdu[0].header['NAXIS1'])+'x'+str(hdu[0].header['NAXIS2'])
+        if 'GRID' in hdu[0].header.keys():
+            grid = hdu[0].header['GRID']
+        else:
+            grid = ''
+        table.add_row([prf, int(hdu[0].header['CHANNEL']),
+            int(hdu[0].header['VERSION']),
+            hdu[0].header['ORIGNAME'], grid, size, hdu[0].header['TYPE'],
+            int(hdu[0].header['OVRSAMPL']), int(hdu[0].header['ITER'])])
+
+    return(table)
+
+def get_prf(ch, ver, oversample=5):
+
+    prf_table = get_all_prf_data()
+    mask = (prf_table['CHANNEL']==int(str(ch).lower().replace('ch',''))) &\
+        (prf_table['oversample']==oversample)
+    prf_table = prf_table[mask]
+
+
+    if int(ver) in list(prf_table['VERSION'].data):
+        mask = prf_table['VERSION']==int(ver)
+        return(prf_table[mask][0]['file'])
+    else:
+        # Get latest version
+        prf_table.sort('VERSION')
+        return(prf_table[-1]['file'])
+
+
+
 
 data="""oversample      5       # Should match psf
 renormpsf       0               # only use if psf is not normalized
@@ -29,7 +70,7 @@ okaydqs             [0]
 errscale            EEEEE
 
 epochs              PPPPP       # 0 = reference, 1 = first epoch, ...
-psfs                ["{data_dir}/FFFFF_psf_x5_VVVVV.fits"]  # psf for galaxy, SN epoch 1, ...
+psfs                ["VVVVV"]  # psf for galaxy, SN epoch 1, ...
 
 splineradius        SSSSS
 splinepixelscale    0.00015     # default is 2.10e-5

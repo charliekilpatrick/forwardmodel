@@ -22,7 +22,7 @@ max_ims = 1000 # 40 # Limit this to limit RAM or CPU time
 def setup_subtractions(basedir, channel, ra, dec,
     email='ckilpatrick@northwestern.edu', clobber=True, interactive=True,
     date_range=[], offset=[0.0, 0.0], stamp_size=29, nprocesses=32,
-    prf_version=2):
+    prf_version=4):
 
     if not interactive and not date_range:
         print('ERROR: need to be in interactive mode or provide a date range')
@@ -210,8 +210,8 @@ def setup_subtractions(basedir, channel, ra, dec,
     lines = lines.replace("BBBBB", '"'+basedir+'"')
 
     lines = lines.replace("NNNNN", str(nprocesses))
-    prf_version = 'v'+str(prf_version)
-    lines = lines.replace("VVVVV", prf_version)
+    prf = param_data.get_prf(int(channel.replace('ch','')), prf_version)
+    lines = lines.replace("VVVVV", prf)
 
     param_file = os.path.join(basedir, 'paramfile.txt')
     f = open(param_file, 'w')
