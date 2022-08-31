@@ -9,7 +9,7 @@ from scipy.interpolate import interp2d, SmoothBivariateSpline
 from scipy.stats import scoreatpercentile
 from astropy import wcs
 from scipy import fftpack as ft
-from analysis.DavidsNM import save_img, miniLM_new, miniNM_new
+from DavidsNM import save_img, miniLM_new, miniNM_new
 import gzip
 import pickle
 import time
@@ -151,6 +151,77 @@ def unparseP(parsed, settings):
 
 
 ####################################
+@ray.remote
+def indiv_model(self, args):
+        [i, parsed, just_pt_flux] = args
+
+        if just_pt_flux:
+            pixelized_psf = self.make_pixelized_PSF(parsed, i)
+            if self.settings["epochs"][i] > 0:
+                pam=self.all_data["pixel_area_map"][i]
+                SN_ampl=parsed["SN_ampl"][self.settings["epochs"][i] - 1]
+                convolved_model = (pixelized_psf/pam)*(SN_ampl)
+            else:
+                convolved_model = pixelized_psf*0.
+            return convolved_model
+
+        # map_coordinates numbers starting from 0,
+        # e.g., radius=3 => 0,1,2,(3),4,5,6
+        dec_scale = cos(self.settings["Dec0"][i]/(180./pi))
+        pscale = self.settings["splinepixelscale"]
+        rad = self.settings["splineradius"]
+
+        pra = parsed["dRA"][i] ; pdec = parsed["dDec"][i]
+
+        ras = self.all_data["RAs"][i]-self.settings["RA0"][i]-pra
+        des = self.all_data["Decs"][i]-self.settings["Dec0"][i]-pdec
+
+        xs = ras * dec_scale / pscale + rad
+        ys = des / pscale + rad
+
+        xs1D = reshape(xs, self.settings["padsize"]**2)
+        ys1D = reshape(ys, self.settings["padsize"]**2)
+
+        coords = array([xs1D, ys1D])
+
+        subsampled_model = map_coordinates(parsed["coeffs"],
+                                           coordinates=coords,
+                                           order=2,
+                                           mode="constant",
+                                           cval=0,
+                                           prefilter=True)
+        subsampled_model = reshape(subsampled_model,
+            [self.settings["padsize"], self.settings["padsize"]])
+
+        psf_fft = self.all_data["psf_FFTs"][self.settings["psfs"][i]]
+        scm = ft.ifft2(ft.fft2(subsampled_model) * psf_fft)
+        scm = array(real(scm), dtype=float64)
+
+        o1=self.settings["oversample"]
+        o2=self.settings["oversample2"]
+        convolved_model = scm[o2::o1, o2::o1]
+        convolved_model = convolved_model[:self.settings["patch"],
+            :self.settings["patch"]]
+
+        if self.settings["epochs"][i] > 0:
+            pixelized_psf = self.make_pixelized_PSF(parsed, i)
+            pam = self.all_data["pixel_area_map"][i]
+            SN_ampl = parsed["SN_ampl"][self.settings["epochs"][i] - 1]
+            convolved_model += (pixelized_psf/pam)*(SN_ampl)
+
+
+        if any(self.all_data["invvars"][i] != 0):
+            mod_resid = self.all_data["scidata"][i] - convolved_model
+            invvar = self.all_data["invvars"][i]
+            sky_estimate = sum(mod_resid*invvar)/sum(invvar)
+        else:
+            sky_estimate = 0.
+
+        convolved_model += sky_estimate
+
+        return convolved_model
+
+##############################################################################
 
 class forward_model():
 
@@ -587,84 +658,13 @@ class forward_model():
 
         return pixelized_psf
 
-
-    @ray.remote
-    def indiv_model(self, args):
-        [i, parsed, just_pt_flux] = args
-
-        if just_pt_flux:
-            pixelized_psf = self.make_pixelized_PSF(parsed, i)
-            if self.settings["epochs"][i] > 0:
-                pam=self.all_data["pixel_area_map"][i]
-                SN_ampl=parsed["SN_ampl"][self.settings["epochs"][i] - 1]
-                convolved_model = (pixelized_psf/pam)*(SN_ampl)
-            else:
-                convolved_model = pixelized_psf*0.
-            return convolved_model
-
-        # map_coordinates numbers starting from 0,
-        # e.g., radius=3 => 0,1,2,(3),4,5,6
-        dec_scale = cos(self.settings["Dec0"][i]/(180./pi))
-        pscale = self.settings["splinepixelscale"]
-        rad = self.settings["splineradius"]
-
-        pra = parsed["dRA"][i] ; pdec = parsed["dDec"][i]
-
-        ras = self.all_data["RAs"][i]-self.settings["RA0"][i]-pra
-        des = self.all_data["Decs"][i]-self.settings["Dec0"][i]-pdec
-
-        xs = ras * dec_scale / pscale + rad
-        ys = des / pscale + rad
-
-        xs1D = reshape(xs, self.settings["padsize"]**2)
-        ys1D = reshape(ys, self.settings["padsize"]**2)
-
-        coords = array([xs1D, ys1D])
-
-        subsampled_model = map_coordinates(parsed["coeffs"],
-                                           coordinates=coords,
-                                           order=2,
-                                           mode="constant",
-                                           cval=0,
-                                           prefilter=True)
-        subsampled_model = reshape(subsampled_model,
-            [self.settings["padsize"], self.settings["padsize"]])
-
-        psf_fft = self.all_data["psf_FFTs"][self.settings["psfs"][i]]
-        scm = ft.ifft2(ft.fft2(subsampled_model) * psf_fft)
-        scm = array(real(scm), dtype=float64)
-
-        o1=self.settings["oversample"]
-        o2=self.settings["oversample2"]
-        convolved_model = scm[o2::o1, o2::o1]
-        convolved_model = convolved_model[:self.settings["patch"],
-            :self.settings["patch"]]
-
-        if self.settings["epochs"][i] > 0:
-            pixelized_psf = self.make_pixelized_PSF(parsed, i)
-            pam = self.all_data["pixel_area_map"][i]
-            SN_ampl = parsed["SN_ampl"][self.settings["epochs"][i] - 1]
-            convolved_model += (pixelized_psf/pam)*(SN_ampl)
-
-
-        if any(self.all_data["invvars"][i] != 0):
-            mod_resid = self.all_data["scidata"][i] - convolved_model
-            invvar = self.all_data["invvars"][i]
-            sky_estimate = sum(mod_resid*invvar)/sum(invvar)
-        else:
-            sky_estimate = 0.
-
-        convolved_model += sky_estimate
-
-        return convolved_model
-
     def modelfn(self, parsed, im_ind = None, just_pt_flux = 0):
         """Construct the model."""
 
         if im_ind == None:
             im_ind = list(range(self.settings["n_img"]))
 
-        futures = [self.indiv_model.remote((i, parsed, just_pt_flux))
+        futures = [indiv_model.remote(self, (i, parsed, just_pt_flux))
             for i in im_ind]
         models = ray.get(futures)
 
