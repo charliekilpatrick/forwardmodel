@@ -13,11 +13,20 @@ from analysis import sort_files
 from analysis import initial_process
 from analysis import subtraction_setup
 from analysis import insert_into_subtractions
-from analysis import forward_model
 
 if __name__ == '__main__':
     start = time.time()
     args = options.parse_arguments(usage='pipeline.py datadir ra dec [options]')
+
+    # Different versions of forward_model code for clusters and one that works
+    # with normal multi-core processing
+    if args.cluster:
+        from analysis import forward_model_cluster as forward_model
+    else:
+        try:
+            from analysis import forward_model_cluster as forward_model
+        except (TypeError, ModuleNotFoundError):
+            from analysis import forward_model
 
     command = ' '.join(sys.argv)
     options.message(f'Starting: {command}')
