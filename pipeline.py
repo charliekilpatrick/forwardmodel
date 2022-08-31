@@ -21,9 +21,9 @@ if __name__ == '__main__':
     # Different versions of forward_model code for clusters and one that works
     # with normal multi-core processing
     if args.cluster:
-        from analysis import forward_model_cluster as forward_model
+        import analysis.forward_model_cluster.forward_model_cluster as fm
     else:
-        from analysis import forward_model
+        import analysis.forward_model.forward_model as fm
 
     command = ' '.join(sys.argv)
     options.message(f'Starting: {command}')
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     if not os.path.exists(args.mopex_dir):
         print(f'mopex directory {args.mopex_dir} does not exist')
         print('mopex is required to continue')
-        print('Install mopex and pass the directory as --mopexdir to continue')
+        print('Install mopex and pass the directory as --mopex-dir to continue')
         sys.exit()
 
     options.message('Initial processing')
@@ -70,8 +70,8 @@ if __name__ == '__main__':
     # Run new_phot.py script
     options.message('Running photometry script')
     basedir=args.datadir
-    fm = forward_model.forward_model(run_file)
-    fm.do_main_reduction(fm.parsed, fm.settings)
+    model = fm(run_file)
+    model.do_main_reduction(model.parsed, model.settings)
 
     options.message('Subtracting models from data')
     run_files = insert_into_subtractions.insert_into_subtractions(args.datadir,

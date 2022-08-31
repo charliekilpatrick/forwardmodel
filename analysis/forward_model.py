@@ -283,7 +283,8 @@ class forward_model():
         return settings
 
 
-    def read_image(self, im, pam, bad_pix_list, exts, settings, RA0, Dec0):
+    def read_image(self, im, pam, bad_pix_list, exts, settings, RA0, Dec0,
+        nimg=None, fmt=None):
         """Reads patches from image files."""
 
         badx = [] ; bady = []
@@ -364,7 +365,16 @@ class forward_model():
         tmp_bad_pix = robust_index(tmp_bad_pix, pixelrange[0], pixelrange[1],
             pixelrange[2], pixelrange[3])
 
-        print(im, pixelrange[0], pixelrange[1], pixelrange[2], pixelrange[3])
+        imbase = os.path.basename(im)
+
+        if fmt is not None:
+            if nimg is None:
+                nimg=''
+            else:
+                nimg = 'Image '+str(nimg)
+            print(fmt.format(i=nimg, img=imbase,
+                x0=pixelrange[0], x1=pixelrange[1],
+                y0=pixelrange[2], y1=pixelrange[3]))
 
         for ext in exts:
             data.append(robust_index(array(f[ext].data, dtype=float64),
@@ -410,7 +420,10 @@ class forward_model():
         all_data["pixelranges"] = []
 
         n_img=settings["n_img"]
-        message("Ingesting all images")
+        message("Ingesting all images:")
+        fmt = '{i:<12} {img:<50} {x0:<4} {x1:<4} {y0:<4} {y1:<4}'
+        print(fmt.format(i='# NIMAGE',img='IMAGE',x0='X0',
+            x1='X1',y0='Y0',y1='Y1'))
         for i in range(n_img):
 
             im=settings["images"][i]
@@ -419,8 +432,6 @@ class forward_model():
             exts=[settings[key][i] for key in ["sciext", "errext", "dqext"]]
             RA0=settings["RA0"][i]
             Dec0=settings["Dec0"][i]
-
-            print(f"Image {i+1} {im}")
 
             data, RAs, Decs, RADec_to_i, RADec_to_j, \
                 pixel_area_map, tmp_bad_pix, mjd, \
@@ -431,7 +442,9 @@ class forward_model():
                                              exts=exts,
                                              settings=settings,
                                              RA0=RA0,
-                                             Dec0=Dec0)
+                                             Dec0=Dec0,
+                                             nimg=i,
+                                             fmt=fmt)
 
             all_data["RADec_to_i"].append(RADec_to_i)
             all_data["RADec_to_j"].append(RADec_to_j)
