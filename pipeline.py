@@ -23,10 +23,7 @@ if __name__ == '__main__':
     if args.cluster:
         from analysis import forward_model_cluster as forward_model
     else:
-        try:
-            from analysis import forward_model_cluster as forward_model
-        except (TypeError, ModuleNotFoundError):
-            from analysis import forward_model
+        from analysis import forward_model
 
     command = ' '.join(sys.argv)
     options.message(f'Starting: {command}')

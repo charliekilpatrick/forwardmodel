@@ -10,6 +10,7 @@ def get_all_prf_data():
     table = Table([['X'*100],[0],[0],['X'*100],['X'*10],['X'*20],['X'*10],[0],[0]],
         names=('file','channel','version','origfile','grid','size','type',
             'oversample','iter')).copy()[:0]
+
     for prf in prfs:
 
         hdu = fits.open(prf)
@@ -28,17 +29,17 @@ def get_all_prf_data():
 def get_prf(ch, ver, oversample=5):
 
     prf_table = get_all_prf_data()
-    mask = (prf_table['CHANNEL']==int(str(ch).lower().replace('ch',''))) &\
+    mask = (prf_table['channel']==int(str(ch).lower().replace('ch',''))) &\
         (prf_table['oversample']==oversample)
     prf_table = prf_table[mask]
 
 
-    if int(ver) in list(prf_table['VERSION'].data):
-        mask = prf_table['VERSION']==int(ver)
+    if int(ver) in list(prf_table['version'].data):
+        mask = prf_table['version']==int(ver)
         return(prf_table[mask][0]['file'])
     else:
         # Get latest version
-        prf_table.sort('VERSION')
+        prf_table.sort('version')
         return(prf_table[-1]['file'])
 
 

@@ -38,8 +38,6 @@ def setup_subtractions(basedir, channel, ra, dec,
 
             expr = os.path.join(dr, f'{channel}/bcd/*cbcd*fits')
 
-            print(expr)
-
             first_file = glob.glob(expr)[0]
             print(f'First file: {first_file}')
             f = fits.open(first_file)
@@ -58,7 +56,7 @@ def setup_subtractions(basedir, channel, ra, dec,
             cbcds.sort()
 
             for cbcd in cbcds:
-                flname = cbcd.split("/")[-1]
+                flname = os.path.basename(cbcd)
 
                 f2name = cbcd.replace("cbcd.fits", "cbunc.fits")
                 f3name = os.path.join(dr, 'working_dir/Rmask',
@@ -91,8 +89,6 @@ def setup_subtractions(basedir, channel, ra, dec,
                 f1.append(f3[0])
                 f1[3].name = "DQ"
                 f3.close()
-
-                print(f1.info())
 
                 f1.writeto(f1merge, overwrite = True)
                 f1.close()
