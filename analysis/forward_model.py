@@ -12,13 +12,14 @@ from scipy import fftpack as ft
 # For some reason the code sometimes wants full analysis.DavidsNM and other
 # times DavidsNM
 try:
-    from analysis.DavidsNM import save_img, miniLM_new, miniNM_new
+    from analysis.NM import save_img, miniLM_new, miniNM_new
 except:
-    from DavidsNM import save_img, miniLM_new, miniNM_new
+    from NM import save_img, miniLM_new, miniNM_new
 import gzip
 import pickle
 import time
 import json
+import tqdm
 import multiprocessing as mp
 
 import warnings
@@ -55,15 +56,6 @@ def message(msg):
 # 1.34 07-24-2022: Refactored to run inside of pipeline and streamline code
 # 1.35 08-17-2022: Created forward_model class to run within pipeline
 version = 1.35
-
-def parse_line(line):
-    parsed = line.split("#")[0]
-    parsed = parsed.split(None)
-    if len(parsed) > 1:
-        parsed = [parsed[0], eval(" ".join(parsed[1:]))]
-        return parsed
-    else:
-        return None
 
 def robust_index(dat, i1, i2, j1, j2, fill_value = 0):
     sh = dat.shape
@@ -155,6 +147,158 @@ def unparseP(parsed, settings):
 
 
 ################################################################################
+def make_pixelized_PSF(parsed, data, i):
+
+    icoord = data["RADec_to_i"](parsed["pt_RA"][i], parsed["pt_Dec"][i])[0,0]
+    jcoord = data["RADec_to_j"](parsed["pt_RA"][i], parsed["pt_Dec"][i])[0,0]
+
+    j2d, i2d = meshgrid(arange(data["patch"], dtype=float64)*data["oversample"],
+                        arange(data["patch"], dtype=float64)*data["oversample"])
+
+    psf_subpix = data["psf_subpixelized"]
+    psfsize = len(psf_subpix)
+
+    i2d -= icoord*data["oversample"] - floor(psfsize/2.)
+    j2d -= jcoord*data["oversample"] - floor(psfsize/2.)
+
+    i1d = reshape(i2d, data["patch"]**2)
+    j1d = reshape(j2d, data["patch"]**2)
+    coords = array([i1d, j1d])
+
+    pixelized_psf = map_coordinates(psf_subpix,
+                                    coordinates=coords,
+                                    order=2,
+                                    mode="constant",
+                                    cval=0,
+                                    prefilter=True)
+
+    pixelized_psf = reshape(pixelized_psf, [data["patch"], data["patch"]])
+
+    return pixelized_psf
+
+def pull_FN_wrapper(P, im_ind_wrap, all_data, makechi2 = 0, pool=None):
+    """For L-M"""
+    if type(im_ind_wrap[0])==list:
+        im_ind = im_ind_wrap[0]
+    else:
+        im_ind = im_ind_wrap
+
+    parsed = parseP(P, all_data[0])
+    pulls = pull_FN(parsed, im_ind, all_data, pool=pool)
+
+    if makechi2:
+        return dot(pulls, pulls)
+    else:
+        return pulls
+
+def pull_FN(parsed, im_ind, all_data, pool=None):
+
+    models = modelfn(parsed, array(all_data)[array(im_ind).astype(int)],
+        pool=pool)
+
+    pulls = []
+    for i, im in enumerate(im_ind):
+        pulls.append((all_data[im]["scidata"] - models[i])*\
+            sqrt(all_data[im]["invvars"]))
+
+    pulls = array(pulls)
+    pulls = reshape(pulls, all_data[0]["patch"]**2 * len(im_ind))
+
+    dec_scale = cos(all_data[0]["Dec0"]/(pi/180.0))
+    dRA_arcsec = (parsed["pt_RA"] - all_data[0]["RA0"]) * dec_scale * 3600.
+    dDec_arcsec = (parsed["pt_Dec"] - all_data[0]["Dec0"]) * 3600.
+
+    pulls = concatenate((pulls,
+        dRA_arcsec/all_data[0]["SN_centroid_prior_arcsec"],
+        dDec_arcsec/all_data[0]["SN_centroid_prior_arcsec"]))
+
+    return pulls
+
+def modelfn(parsed, data, just_pt_flux = False, pool=None):
+    """Construct the model."""
+
+    output = []
+    tasks = [(d, parsed, just_pt_flux) for d in data]
+    if pool==None:
+        for task in tasks:
+            output.append(indiv_model(task))
+    else:
+        for result in pool.imap(indiv_model, tasks):
+            output.append(result)
+
+    return array(output)
+
+def indiv_model(args):
+
+    [data, parsed, just_pt_flux] = args
+
+    if just_pt_flux:
+        pixelized_psf = make_pixelized_PSF(parsed, data, data['i'])
+        if data['epoch'] > 0:
+            pam=data['pixel_area_map']
+            SN_ampl=parsed["SN_ampl"][data['epoch'] - 1]
+            convolved_model = (pixelized_psf/pam)*(SN_ampl)
+        else:
+            convolved_model = pixelized_psf*0.
+        return convolved_model
+
+    # map_coordinates numbers starting from 0,
+    # e.g., radius=3 => 0,1,2,(3),4,5,6
+    dec_scale = data['dec_scale']
+    pscale = data["splinepixelscale"]
+    rad = data["splineradius"]
+
+    pra = parsed["dRA"][data['i']] ; pdec = parsed["dDec"][data['i']]
+
+    ras = data["RAs"]-data["RA0"]-pra
+    des = data["Decs"]-data["Dec0"]-pdec
+
+    xs = ras * dec_scale / pscale + rad
+    ys = des / pscale + rad
+
+    xs1D = reshape(xs, data["padsize"]**2)
+    ys1D = reshape(ys, data["padsize"]**2)
+
+    coords = array([xs1D, ys1D])
+
+    subsampled_model = map_coordinates(parsed["coeffs"],
+                                           coordinates=coords,
+                                           order=2,
+                                           mode="constant",
+                                           cval=0,
+                                           prefilter=True)
+    subsampled_model = reshape(subsampled_model,
+        [data["padsize"], data["padsize"]])
+
+    psf_fft = data["psf_FFTs"]
+    scm = ft.ifft2(ft.fft2(subsampled_model) * psf_fft)
+    scm = array(real(scm), dtype=float64)
+
+    o1=data["oversample"]
+    o2=data["oversample2"]
+    convolved_model = scm[o2::o1, o2::o1]
+    convolved_model = convolved_model[:data["patch"], :data["patch"]]
+
+    if data["epoch"] > 0:
+        pixelized_psf = make_pixelized_PSF(parsed, data, data['i'])
+        pam = data["pixel_area_map"]
+        SN_ampl = parsed["SN_ampl"][data["epoch"] - 1]
+        convolved_model += (pixelized_psf/pam)*(SN_ampl)
+
+
+    if data["flag_invvars"]:
+        mod_resid = data["scidata"] - convolved_model
+        invvar = data["invvars"]
+        sky_estimate = sum(mod_resid*invvar)/data["sum_invvars"]
+    else:
+        sky_estimate = 0.
+
+    convolved_model += sky_estimate
+
+    return convolved_model
+
+
+################################################################################
 
 class forward_model():
 
@@ -172,43 +316,50 @@ class forward_model():
 
         message("Getting all data for images")
 
-        self.all_data = dict(scidata=[],
-                             invvars=[],
-                             RAs=[],
-                             Decs=[],
-                             psf_FFTs={},
-                             psf_subpixelized={})
+        self.pool = multiprocessing.Pool(processes = self.settings["n_cpu"])
 
-        self.all_data = self.get_PSFs(self.settings, self.all_data)
-        self.all_data = self.get_data(self.settings, self.all_data)
-
-        self.settings["flux_scale"] = scoreatpercentile(
-            self.all_data["scidata"], 99)
-
-        self.parsed = {}
-        self.parsed["coeffs"] = reshape_coeffs(ones(self.settings["n_coeff"])*\
-            self.settings["flux_scale"], radius = self.settings["splineradius"])
-        self.parsed["dRA"] = zeros(self.settings["n_img"], dtype=float64)
-        self.parsed["dDec"] = zeros(self.settings["n_img"], dtype=float64)
-        self.parsed["sndRA_offset"] = self.settings["sndRA_offset"]
-        self.parsed["sndDec_offset"] = self.settings["sndDec_offset"]
-        self.parsed["SN_ampl"] = ones(self.settings["n_epoch"],
-            dtype=float64)*self.settings["flux_scale"]
-        self.parsed = parseP(unparseP(self.parsed, self.settings),
-            self.settings)
+        self.all_data = self.get_all_data(self.settings)
+        self.parsed = self.initialize_params(self.settings)
 
         print("Saving input images:")
-        self.save_imgs(self.all_data, self.basedir)
+        self.save_imgs(self.all_data, self.basedir, imgtypes=['invvars',
+            'scidata','pixel_area_map', 'pixel_sampled_RAs',
+            'pixel_sampled_Decs'])
 
+    def initialize_params(self, settings):
 
-    def save_imgs(self, all_data, basedir):
+        parsed = {}
+        parsed["coeffs"] = reshape_coeffs(ones(settings["n_coeff"])*\
+            settings["flux_scale"], radius=settings["splineradius"])
+        parsed["dRA"] = zeros(settings["n_img"], dtype=float64)
+        parsed["dDec"] = zeros(settings["n_img"], dtype=float64)
+        parsed["sndRA_offset"] = settings["sndRA_offset"]
+        parsed["sndDec_offset"] = settings["sndDec_offset"]
+        parsed["SN_ampl"] = ones(settings["n_epoch"], dtype=float64)*\
+            settings["flux_scale"]
+        parsed = parseP(unparseP(parsed, settings), settings)
 
-        for imgtype in ['invvars','scidata','pixel_area_map',
-            'pixel_sampled_RAs', 'pixel_sampled_Decs']:
-            if imgtype in all_data.keys():
-                imgname = os.path.join(basedir, imgtype+'.fits')
+        return(parsed)
+
+    def save_imgs(self, all_data, basedir, imgtypes=['invvars',
+            'scidata','pixel_area_map', 'pixel_sampled_RAs',
+            'pixel_sampled_Decs']):
+
+        for imgtype in imgtypes:
+            if len(all_data)>0 and imgtype in all_data[0].keys():
+                data = array([d[imgtype] for d in all_data])
+                imgname = os.path.join(basedir, f'{imgtype}.fits')
                 print(f'Saving: {imgname}')
-                save_img(all_data[imgtype], imgname)
+                save_img(data, imgname)
+
+    def parse_line(self, line):
+        parsed = line.split("#")[0]
+        parsed = parsed.split(None)
+        if len(parsed) > 1:
+            parsed = [parsed[0], eval(" ".join(parsed[1:]))]
+            return parsed
+        else:
+            return None
 
     def read_paramfile(self, parfl):
         """Read in the settings."""
@@ -220,7 +371,7 @@ class forward_model():
         settings = {}
 
         for line in lines:
-            parsed = parse_line(line)
+            parsed = self.parse_line(line)
             if parsed != None:
                 settings[parsed[0]] = parsed[1]
 
@@ -268,12 +419,52 @@ class forward_model():
             if type(settings[key]) != list:
                 settings[key] = [settings[key]]*settings["n_img"]
 
-        if len(settings["psfs"]) == 1:
-            settings["psfs"] = [settings["psfs"][0]
-                for i in range(settings["n_img"])]
+        if settings["spatial"]==0:
+            if len(settings["psfs"]) == 1:
+                settings["psfs"] = [settings["psfs"][0]
+                    for i in range(settings["n_img"])]
+        elif settings["spatial"]==1:
+            # Need to do this image by image for given x/y
+            RA0 = settings["RA0"]
+            Dec0 = settings["Dec0"]
+
+            base_file = settings["psfs"][0]
+            dx_file = base_file.replace('base','dx')
+            dy_file = base_file.replace('base','dy')
+
+            psf_hdu = fits.open(base_file)
+            dx_hdu = fits.open(dx_file)
+            dy_hdu = fits.open(dy_file)
+
+            # Going to make a bunch of new psf files - first make PRF dir
+            psf_dir = os.path.join(settings["base_dir"], 'psfs')
+            if not os.path.exists(psf_dir):
+                os.makedirs(psf_dir)
+
+            # Make one PSF file for each image
+            psf_names = []
+            for img in settings["images"]:
+                hdu = fits.open(img)
+                w = wcs.WCS(hdu[0].header)
+                pix_xy = w.all_world2pix([[RA0, Dec0]], 1)[0]
+                pix_xy = array(around(pix_xy), dtype=int32)
+
+                psf_data = psf_hdu[0].data + (pix_xy[0]-128)*dx_hdu[0].data +\
+                    (pix_xy[1]-128)*dy_hdu[0].data
+
+                psf_name = img.replace('.fits','_psf.fits')
+
+                newhdu = fits.PrimaryHDU()
+                newhdu.header = psf_hdu[0].header
+                newhdu.data = psf_data
+
+                newhdu.writeto(psf_name, overwrite=True,
+                    output_verify='silentfix')
+
 
         for key in ["RA0", "Dec0"]:
             settings[key] = array(settings[key])
+        settings['dec_scale']=cos(settings["Dec0"]/(180./pi))
 
         for key in ["sciext", "errext", "dqext", "errscale", "pixel_area_map",
             "bad_pixel_list", "images", "epochs", "psfs"]:
@@ -303,7 +494,6 @@ class forward_model():
             except:
                 print("Couldn't read EXPSTART/EXPEND/BMJD_OBS!")
                 mjd = 0.
-
 
         w = wcs.WCS(f[exts[0]].header)
         pix_xy = w.all_world2pix([[RA0, Dec0]], 1)[0]
@@ -371,7 +561,7 @@ class forward_model():
             if nimg is None:
                 nimg=''
             else:
-                nimg = 'Image '+str(nimg)
+                nimg = 'Image_'+str(nimg+1)
             print(fmt.format(i=nimg, img=imbase,
                 x0=pixelrange[0], x1=pixelrange[1],
                 y0=pixelrange[2], y1=pixelrange[3]))
@@ -408,53 +598,55 @@ class forward_model():
             tmp_bad_pix, mjd, pixel_sampled_RAs, pixel_sampled_Decs, pixelrange
 
 
-    def get_data(self, settings, all_data):
+    def get_all_data(self, settings):
         """Read in the data."""
 
-        all_data["RADec_to_i"] = []
-        all_data["RADec_to_j"] = []
-        all_data["pixel_area_map"] = []
-        all_data["mjd"] = []
-        all_data["pixel_sampled_RAs"] = []
-        all_data["pixel_sampled_Decs"] = []
-        all_data["pixelranges"] = []
-
         n_img=settings["n_img"]
+        all_data = [{} for i in range(n_img)]
+        all_data = self.get_PSFs(settings, all_data)
+
         message("Ingesting all images:")
-        fmt = '{i:<12} {img:<50} {x0:<4} {x1:<4} {y0:<4} {y1:<4}'
+        fmt = '{i:<11} {img:<48} {x0:<4} {x1:<4} {y0:<4} {y1:<4}'
         print(fmt.format(i='# NIMAGE',img='IMAGE',x0='X0',
             x1='X1',y0='Y0',y1='Y1'))
+
         for i in range(n_img):
 
-            im=settings["images"][i]
-            pam=settings["pixel_area_map"][i]
-            bad_pix_list=settings["bad_pixel_list"][i]
-            exts=[settings[key][i] for key in ["sciext", "errext", "dqext"]]
-            RA0=settings["RA0"][i]
-            Dec0=settings["Dec0"][i]
+            all_data[i]['i']=i
+            all_data[i]['image']=settings["images"][i]
+            all_data[i]['pixel_area_map']=settings["pixel_area_map"][i]
+            all_data[i]['bad_pixel_list']=settings["bad_pixel_list"][i]
 
-            data, RAs, Decs, RADec_to_i, RADec_to_j, \
+            exts=[settings[key][i] for key in ["sciext", "errext", "dqext"]]
+            all_data[i]['sciext']=exts[0]
+            all_data[i]['errext']=exts[1]
+            all_data[i]['dqext']=exts[2]
+
+            all_data[i]['RA0']=settings["RA0"][i]
+            all_data[i]['Dec0']=settings["Dec0"][i]
+
+            imdata, RAs, Decs, RADec_to_i, RADec_to_j, \
                 pixel_area_map, tmp_bad_pix, mjd, \
                 pixel_sampled_RAs, pixel_sampled_Decs, \
-                pixelrange = self.read_image(im=im,
-                                             pam=pam,
-                                             bad_pix_list=bad_pix_list,
-                                             exts=exts,
-                                             settings=settings,
-                                             RA0=RA0,
-                                             Dec0=Dec0,
-                                             nimg=i,
-                                             fmt=fmt)
+                pixelrange = self.read_image(im=all_data[i]['image'],
+                    pam=all_data[i]['pixel_area_map'],
+                    bad_pix_list=all_data[i]['bad_pixel_list'],
+                    exts=exts,
+                    settings=settings,
+                    RA0=all_data[i]['RA0'],
+                    Dec0=all_data[i]['Dec0'],
+                    nimg=i,
+                    fmt=fmt)
 
-            all_data["RADec_to_i"].append(RADec_to_i)
-            all_data["RADec_to_j"].append(RADec_to_j)
-            all_data["pixel_area_map"].append(pixel_area_map)
-            all_data["mjd"].append(mjd)
-            all_data["pixel_sampled_RAs"].append(pixel_sampled_RAs)
-            all_data["pixel_sampled_Decs"].append(pixel_sampled_Decs)
-            all_data["pixelranges"].append(pixelrange)
+            all_data[i]["RADec_to_i"]=RADec_to_i
+            all_data[i]["RADec_to_j"]=RADec_to_j
+            all_data[i]["pixel_area_map"]=pixel_area_map
+            all_data[i]["mjd"]=mjd
+            all_data[i]["pixel_sampled_RAs"]=pixel_sampled_RAs
+            all_data[i]["pixel_sampled_Decs"]=pixel_sampled_Decs
+            all_data[i]["pixelranges"]=pixelrange
 
-            DQ = array(data[2], int32)
+            DQ = array(imdata[2], int32)
 
             for okaydq in settings["okaydqs"]:
                 """E.g., 111 with okaydq = 2: ~ okaydq = 101, so DQ -> 101.
@@ -462,43 +654,68 @@ class forward_model():
                 DQ = bitwise_and(DQ, ~ okaydq)
             DQ += tmp_bad_pix
 
-            invvars = (data[1]*settings["errscale"][i])**-2. * (DQ == 0)
+            invvars = (imdata[1]*settings["errscale"][i])**-2. * (DQ == 0)
 
-            bad_inds = where(isinf(invvars) + isnan(invvars) + isnan(data[0]))
+            bad_inds = where(isinf(invvars) + isnan(invvars) + isnan(imdata[0]))
             invvars[bad_inds] = 0.
-            data[0][bad_inds] = 0.
+            imdata[0][bad_inds] = 0.
             assert all(invvars >= 0)
 
-            all_data["invvars"].append(invvars)
+            all_data[i]["invvars"]=invvars
+            all_data[i]["sum_invvars"]=sum(invvars)
+            all_data[i]["flag_invvars"]=any(invvars != 0)
 
-            all_data["RAs"].append(RAs)
-            all_data["Decs"].append(Decs)
-            all_data["scidata"].append(data[0])
+            all_data[i]["RAs"]=RAs
+            all_data[i]["Decs"]=Decs
+            all_data[i]["scidata"]=imdata[0]
+
+            # Pass remaining data from settings
+            all_data[i]['fitSNoffset']=settings['fitSNoffset']
+            all_data[i]['patch']=settings['patch']
+            all_data[i]['padsize']=settings['padsize']
+            all_data[i]['n_epoch']=settings['n_epoch']
+            all_data[i]['n_coeff']=settings['n_coeff']
+            all_data[i]['splineradius']=settings['splineradius']
+            all_data[i]['splinepixelscale']=settings['splinepixelscale']
+            all_data[i]['apodize']=settings['apodize']
+            all_data[i]['renormpsf']=settings['renormpsf']
+            all_data[i]['iterative_centroid']=settings['iterative_centroid']
+            all_data[i]['errscale']=settings['errscale'][i]
+            all_data[i]['dec_scale']=settings['dec_scale'][i]
+            all_data[i]['epoch']=settings['epochs'][i]
+            all_data[i]['SN_centroid_prior_arcsec']=settings['SN_centroid_prior_arcsec']
+            all_data[i]['n_img']=settings['n_img']
+
+        flux_scale = scoreatpercentile(array([d['scidata']
+            for d in all_data]), 99)
+        self.settings["flux_scale"] = flux_scale
+        for i in range(n_img):
+            all_data[i]['flux_scale'] = flux_scale
 
         print("\n\n")
 
-        all_data["mjd"] = array(all_data["mjd"])
-
         return all_data
-
 
     def get_PSFs(self, settings, all_data):
         """Read in the PSFs. Store FFTs. In the future, don't bother storing
            FFTs for point sources!!!"""
 
-        all_data["psf_FFTs"] = {}
-        all_data["psf_subpixelized"] = {}
-
         basedir = settings["base_dir"]
 
         print('PSF parameters:')
+
+        n_psf = len(settings['psfs'])
+        msg='Must have a single PSF for all images or one PSF per image'
+        assert n_psf==settings['n_img'], msg
+
+        psf_data = {'psf_FFTs':{}, 'psf_subpixelized':{}}
 
         for psf in unique(settings["psfs"]):
             f = fits.open(psf)
             psfdata = array(f[0].data, dtype=float64)
             f.close()
 
-            msg="PSF has multiple pixels at the same maximum!"
+            msg='PSF has multiple pixels at the same maximum!'
             assert sum(psfdata == psfdata.max()) == 1, msg
 
             print(f"psf shape {psfdata.shape}")
@@ -549,7 +766,7 @@ class forward_model():
             psf_test = array(real(psf_test), dtype=float64)
             assert psf_test[0,0] == psf_test.max()
 
-            all_data["psf_FFTs"][psf] = psfdata_fft
+            psf_data["psf_FFTs"][psf] = psfdata_fft
 
             maxinds = where(psfdata_odd == psfdata_odd.max())
             print(f"maxinds {maxinds[0][0]} {maxinds[1][0]}")
@@ -560,183 +777,32 @@ class forward_model():
             psf_fft = ft.fft2(psfdata_odd) * ft.fft2(recenter)
             psfdata = array(real(ft.ifft2(psf_fft)), dtype=float64)
 
-            all_data["psf_subpixelized"][psf] = psfdata
+            psf_data["psf_subpixelized"][psf] = psfdata
 
-            save_img(all_data["psf_subpixelized"][psf],
+            save_img(psf_data["psf_subpixelized"][psf],
                 os.path.join(basedir, "psf_subpixelized.fits"))
 
             print("\n\n")
 
+        psfs = settings['psfs']
+
+        for i in range(settings['n_img']):
+            all_data[i]['psf']=psfs[i]
+            all_data[i]['psf_subpixelized']=psf_data['psf_subpixelized'][
+                all_data[i]['psf']]
+            all_data[i]['psf_FFTs']=psf_data['psf_FFTs'][all_data[i]['psf']]
+            all_data[i]['oversample']=settings['oversample']
+            all_data[i]['oversample2']=settings['oversample2']
+            all_data[i]['psf_has_pix']=settings['psf_has_pix']
+
         return all_data
-
-    def make_pixelized_PSF(self, parsed, i):
-
-        icoord = self.all_data["RADec_to_i"][i](self.parsed["pt_RA"][i],
-            self.parsed["pt_Dec"][i])[0,0]
-        jcoord = self.all_data["RADec_to_j"][i](self.parsed["pt_RA"][i],
-            self.parsed["pt_Dec"][i])[0,0]
-
-        j2d, i2d = meshgrid(arange(self.settings["patch"],
-                                dtype=float64)*self.settings["oversample"],
-                            arange(self.settings["patch"],
-                                dtype=float64)*self.settings["oversample"])
-
-        psf_subpix = self.all_data["psf_subpixelized"][self.settings["psfs"][i]]
-        psfsize = len(psf_subpix)
-
-        i2d -= icoord*self.settings["oversample"] - floor(psfsize/2.)
-        j2d -= jcoord*self.settings["oversample"] - floor(psfsize/2.)
-
-
-        i1d = reshape(i2d, self.settings["patch"]**2)
-        j1d = reshape(j2d, self.settings["patch"]**2)
-        coords = array([i1d, j1d])
-
-        patch=self.settings["patch"]
-        psf_subpix = self.all_data["psf_subpixelized"][self.settings["psfs"][i]]
-        pixelized_psf = map_coordinates(psf_subpix,
-                                        coordinates=coords,
-                                        order=2,
-                                        mode="constant",
-                                        cval=0,
-                                        prefilter=True)
-        pixelized_psf = reshape(pixelized_psf, [patch, patch])
-
-        return pixelized_psf
-
-    def indiv_model(self, args):
-        [i, parsed, just_pt_flux] = args
-
-        if just_pt_flux:
-            pixelized_psf = self.make_pixelized_PSF(parsed, i)
-            if self.settings["epochs"][i] > 0:
-                pam=self.all_data["pixel_area_map"][i]
-                SN_ampl=parsed["SN_ampl"][self.settings["epochs"][i] - 1]
-                convolved_model = (pixelized_psf/pam)*(SN_ampl)
-            else:
-                convolved_model = pixelized_psf*0.
-            return convolved_model
-
-        # map_coordinates numbers starting from 0,
-        # e.g., radius=3 => 0,1,2,(3),4,5,6
-        dec_scale = cos(self.settings["Dec0"][i]/(180./pi))
-        pscale = self.settings["splinepixelscale"]
-        rad = self.settings["splineradius"]
-
-        pra = parsed["dRA"][i] ; pdec = parsed["dDec"][i]
-
-        ras = self.all_data["RAs"][i]-self.settings["RA0"][i]-pra
-        des = self.all_data["Decs"][i]-self.settings["Dec0"][i]-pdec
-
-        xs = ras * dec_scale / pscale + rad
-        ys = des / pscale + rad
-
-        xs1D = reshape(xs, self.settings["padsize"]**2)
-        ys1D = reshape(ys, self.settings["padsize"]**2)
-
-        coords = array([xs1D, ys1D])
-
-        subsampled_model = map_coordinates(parsed["coeffs"],
-                                           coordinates=coords,
-                                           order=2,
-                                           mode="constant",
-                                           cval=0,
-                                           prefilter=True)
-        subsampled_model = reshape(subsampled_model,
-            [self.settings["padsize"], self.settings["padsize"]])
-
-        psf_fft = self.all_data["psf_FFTs"][self.settings["psfs"][i]]
-        scm = ft.ifft2(ft.fft2(subsampled_model) * psf_fft)
-        scm = array(real(scm), dtype=float64)
-
-        o1=self.settings["oversample"]
-        o2=self.settings["oversample2"]
-        convolved_model = scm[o2::o1, o2::o1]
-        convolved_model = convolved_model[:self.settings["patch"],
-            :self.settings["patch"]]
-
-        if self.settings["epochs"][i] > 0:
-            pixelized_psf = self.make_pixelized_PSF(parsed, i)
-            pam = self.all_data["pixel_area_map"][i]
-            SN_ampl = parsed["SN_ampl"][self.settings["epochs"][i] - 1]
-            convolved_model += (pixelized_psf/pam)*(SN_ampl)
-
-
-        if any(self.all_data["invvars"][i] != 0):
-            mod_resid = self.all_data["scidata"][i] - convolved_model
-            invvar = self.all_data["invvars"][i]
-            sky_estimate = sum(mod_resid*invvar)/sum(invvar)
-        else:
-            sky_estimate = 0.
-
-        convolved_model += sky_estimate
-
-        return convolved_model
-
-
-    def modelfn(self, parsed, im_ind = None, just_pt_flux = 0):
-        """Construct the model."""
-
-        if im_ind == None:
-            im_ind = list(range(self.settings["n_img"]))
-
-        pool = multiprocessing.Pool(processes = self.settings["n_cpu"])
-
-        models = pool.map(self.indiv_model,
-            [(i, parsed, just_pt_flux) for i in im_ind])
-
-        pool.close()
-
-        return array(models)
-
-    def default_im_ind(self, im_ind):
-        if im_ind == None:
-            im_ind = list(range(self.settings["n_img"]))
-        if type(im_ind) == int:
-            im_ind = [im_ind]
-        return im_ind
-
-    def pull_FN(self, parsed, im_ind = None):
-        im_ind = self.default_im_ind(im_ind)
-
-        models = self.modelfn(parsed, im_ind = im_ind)
-
-        pulls = []
-        for i, im in enumerate(im_ind):
-            pulls.append((self.all_data["scidata"][im] - models[i])*\
-                sqrt(self.all_data["invvars"][im]))
-
-        pulls = array(pulls)
-        pulls = reshape(pulls, self.settings["patch"]**2 * len(im_ind))
-
-        dec_scale = cos(self.settings["Dec0"]/57.2957795)*3600.
-        dRA_arcsec = (parsed["pt_RA"] - self.settings["RA0"])*dec_scale
-        dDec_arcsec = (parsed["pt_Dec"] - self.settings["Dec0"])*3600.
-
-        pulls = concatenate((pulls,
-            dRA_arcsec/self.settings["SN_centroid_prior_arcsec"],
-            dDec_arcsec/self.settings["SN_centroid_prior_arcsec"]))
-
-        return pulls
-
-
-    def pull_FN_wrapper(self, P, im_ind_wrap, makechi2 = 0):
-        """For L-M"""
-        im_ind = im_ind_wrap[0]
-        assert type(im_ind) == list
-
-        parsed = parseP(P, self.settings)
-        pulls = self.pull_FN(parsed, im_ind)
-
-        if makechi2:
-            return dot(pulls, pulls)
-        else:
-            return pulls
 
     def LM_fit_for_centroids(self, parsed, offset_scale=1.0e-1):
         P = unparseP(parsed, self.settings)
 
-        pulls = self.pull_FN(parsed)
+        print('Running initial pulls')
+        pulls = pull_FN(parsed, list(range(self.settings["n_img"])),
+            self.all_data, pool=self.pool)
         assert 1 - isnan(dot(pulls, pulls))
 
         # Get miniscale parameters
@@ -746,7 +812,6 @@ class forward_model():
             dtype=float64)*self.settings["flux_scale"]
         dRA = zeros(self.settings["n_img"], dtype=float64)
         dDec = zeros(self.settings["n_img"], dtype=float64)
-
 
         miniscale_parsed = dict(coeffs=coeffs,
                                 SN_ampl=SN_ampl,
@@ -761,12 +826,15 @@ class forward_model():
         print(f"Running galaxy+SN-only fit {timenow}")
         P, F, NA = miniLM_new(ministart=P,
                               miniscale=miniscale,
-                              residfn=self.pull_FN_wrapper,
+                              residfn=pull_FN_wrapper,
+                              all_data=self.all_data,
                               passdata=list(range(self.settings["n_img"])),
                               verbose=False,
                               maxiter=1,
-                              use_dense_J=True)
+                              use_dense_J=True,
+                              pool=self.pool)
 
+        print(f"LM chi^2 {F}")
         timenow=time.asctime()
         elapsed = time.time() - start
         print(f"Done at {timenow}, {elapsed} total seconds")
@@ -797,16 +865,16 @@ class forward_model():
                                         dRA=tmp_dpos,
                                         dDec=tmp_dpos)
                 miniscale = unparseP(miniscale_parsed, self.settings)
+
                 P, F, Cmat = miniLM_new(ministart=P,
                                         miniscale=miniscale,
-                                        residfn=self.pull_FN_wrapper,
+                                        residfn=pull_FN_wrapper,
+                                        all_data=self.all_data,
                                         passdata=[i],
                                         verbose=False,
-                                        maxiter=3)
+                                        maxiter=3,
+                                        pool=self.pool)
         else:
-
-            timenow=time.asctime()
-            print(f"Running centroid-only fit {timenow}")
 
             coeffs = reshape_coeffs(zeros(self.settings["n_coeff"]),
                 radius=self.settings["splineradius"])
@@ -823,18 +891,24 @@ class forward_model():
                                     dRA=dRA,
                                     dDec=dDec)
             miniscale = unparseP(miniscale_parsed, self.settings)
+
+            timenow=time.asctime()
+            print(f"Running centroid-only fit {timenow}")
             P, F, NA = miniLM_new(ministart=P,
                                   miniscale=miniscale,
-                                  residfn=self.pull_FN_wrapper,
+                                  residfn=pull_FN_wrapper,
+                                  all_data=self.all_data,
                                   passdata=list(range(n_img)),
                                   verbose=False,
                                   maxiter=3,
-                                  use_dense_J=True)
+                                  use_dense_J=True,
+                                  pool=self.pool)
 
             print(f"LM chi^2 {F}")
-            timenow=time.asctime()
-            print(f"Running everything fit {timenow}")
 
+            timenow=time.asctime()
+            start = time.time()
+            print(f"Running everything fit {timenow}")
             coeffs = reshape_coeffs(ones(self.settings["n_coeff"])*\
                 self.settings["flux_scale"],
                 radius=self.settings["splineradius"])
@@ -854,11 +928,18 @@ class forward_model():
             miniscale = unparseP(miniscale_parsed, self.settings)
             P, F, Cmat = miniLM_new(ministart=P,
                                     miniscale=miniscale,
-                                    residfn=self.pull_FN_wrapper,
+                                    residfn=pull_FN_wrapper,
+                                    all_data=self.all_data,
                                     passdata=list(range(n_img)),
                                     verbose=False,
                                     maxiter=3,
-                                    use_dense_J=True)
+                                    use_dense_J=True,
+                                    pool=self.pool)
+
+            print(f"LM chi^2 {F}")
+            timenow=time.asctime()
+            elapsed = time.time() - start
+            print(f"Done at {timenow}, {elapsed} total seconds")
 
             try:
                 Cmat[0,0]
@@ -911,7 +992,8 @@ class forward_model():
 
             parsed, Cmat = self.LM_fit_for_centroids(parsed)
 
-            pulls = self.pull_FN(parsed)
+            pulls = pull_FN(parsed, list(range(settings["n_img"])),
+                self.all_data, pool=self.pool)
             pRA = parsed["dRA"]
             dDec = parsed["dDec"]
             chi2 = dot(pulls, pulls)
@@ -928,18 +1010,19 @@ class forward_model():
         assert itr > 0, "No iterations run!"
 
         # Parse models, residuals, pulls, and pt_models and save
-        models = self.modelfn(parsed)
+        models = modelfn(parsed, self.all_data, pool=self.pool)
         save_img(models, os.path.join(self.basedir, "models.fits"))
 
-        residuals = [(self.all_data["scidata"][i] - models[i])*\
-            (self.all_data["invvars"][i] > 0) for i in range(n_img)]
+        residuals = [(self.all_data[i]["scidata"] - models[i])*\
+            (self.all_data[i]["invvars"] > 0) for i in range(n_img)]
         save_img(residuals, os.path.join(self.basedir, "residuals.fits"))
 
-        pulls = array([(self.all_data["scidata"][i] - models[i])*\
-            sqrt(self.all_data["invvars"][i]) for i in range(n_img)])
+        pulls = array([(self.all_data[i]["scidata"] - models[i])*\
+            sqrt(self.all_data[i]["invvars"]) for i in range(n_img)])
         save_img(pulls, os.path.join(self.basedir, "pulls.fits"))
 
-        pt_models = self.modelfn(parsed, just_pt_flux = 1)
+        pt_models = modelfn(parsed, self.all_data, pool=self.pool,
+            just_pt_flux = True)
         save_img(pt_models, os.path.join(self.basedir, "pt_models.fits"))
 
         try:
@@ -954,6 +1037,9 @@ class forward_model():
 
     def create_fit_results(self, all_data, parsed, settings, SNCmat, Cmat, chi2,
         pulls, pklbasename='fit_results.pickle', resultsbasename='results.txt'):
+
+        # Recast all_data into dict of lists instead of list of dict
+        all_data = {key: [i[key] for i in all_data] for key in all_data[0]}
 
         print(f'Dumping data into {pklbasename}')
         pickle.dump([all_data, parsed, settings, SNCmat, Cmat],
@@ -992,8 +1078,8 @@ class forward_model():
 
             for i in range(settings["n_epoch"]):
                 ename = settings["epoch_names"][i+1]
-                inds = where(settings["epochs"] == i+1)
-                mean_data = mean(array(all_data["mjd"])[inds])
+                inds = where(settings["epochs"] == i+1)[0]
+                mean_data = mean(array([all_data["mjd"][i] for i in inds]))
 
                 f.write(f"MJD_{ename} {mean_data} \n")
 

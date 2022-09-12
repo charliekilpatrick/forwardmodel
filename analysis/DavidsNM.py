@@ -769,21 +769,20 @@ def err_from_cov(matrix):
 
 
 # Start L-M
-
-
-def Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params, displ_list, params, datalen, use_dense_J, pool = None):
+def Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params,
+    displ_list, params, datalen, use_dense_J, pool = None):
 
     if use_dense_J:
         J = zeros([datalen, len(unpad_params)], dtype=float64, order = 'F')
     else:
         J = zeros([datalen, len(unpad_params)], dtype=float64)#, order = 'F')
 
-    #J = lil_matrix((datalen, len(unpad_params)))
-
     if pool == None:
-        base_mod_list = modelfn(get_pad_params(unpad_params, displ_list, params), merged_list)
+        base_mod_list = modelfn(get_pad_params(unpad_params,
+            displ_list, params), merged_list)
     else:
-        base_mod_list = modelfn((get_pad_params(unpad_params, displ_list, params), merged_list))
+        base_mod_list = modelfn((get_pad_params(unpad_params,
+            displ_list, params), merged_list))
 
     if pool == None:
         for j in range(len(unpad_params)):
@@ -815,10 +814,6 @@ def Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params, displ_list,
 def get_pad_params(unpad_params, displ_list, params):
     pad_params = copy.deepcopy(params)
 
-
-    #for i in range(len(displ_list)):
-    #    if displ_list[i] == 0:
-    #        pad_params = insert(pad_params, i, params[i])
     inds = where(displ_list != 0)
     pad_params[inds] = unpad_params
     return pad_params
@@ -847,13 +842,18 @@ def chi2fromresid(resid, Wmat):
         return chi2
 
 
-def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam = 100000, Wmat = None, jacobian_name = "Jacob.fits", return_wmat = False, use_dense_J = False, pool = None, save_jacobian = True):
+def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150,
+    maxlam = 100000, Wmat = None, jacobian_name = "Jacob.fits",
+    return_wmat = False, use_dense_J = False, pool = None,
+    save_jacobian = True):
+
     params = array(params, dtype=float64)
     displ_list = array(displ_list, dtype=float64)
 
     # fix_list -- 1 = fix
 
-    merged_list = copy.deepcopy(orig_merged_list)
+    merged_list = orig_merged_list
+    #merged_list = copy.deepcopy(orig_merged_list)
     modelfn = orig_merged_list[0]
     del merged_list[0]
     del merged_list[0] #placeholder for inlimit
@@ -870,7 +870,8 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
     else:
         curchi2 = modelfn((params, merged_list))
 
-    unpad_offsetparams = get_unpad_params(array(displ_list, dtype=float64), displ_list)*1.e-6
+    unpad_offsetparams = get_unpad_params(array(displ_list, dtype=float64),
+        displ_list)*1.e-6
 
 
     unpad_params = get_unpad_params(params, displ_list)
@@ -882,13 +883,13 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
     while lam < maxlam and itercount < maxiter:
         itercount += 1
 
-
         if verbose:
-
-            print(len(unpad_offsetparams), len(unpad_params), len(displ_list), len(params), len(curchi2))
+            print(len(unpad_offsetparams), len(unpad_params),
+                len(displ_list), len(params), len(curchi2))
         if not was_just_searching:
-            Jacob = Jacobian(modelfn, unpad_offsetparams, merged_list, unpad_params, displ_list, params, len(curchi2), use_dense_J, pool = pool)
-        #save_img(Jacob.todense(), "tmpjacob.fits")
+            Jacob = Jacobian(modelfn, unpad_offsetparams, merged_list,
+                unpad_params, displ_list, params, len(curchi2),
+                use_dense_J, pool = pool)
         was_just_searching = 0
 
         if verbose:
@@ -926,20 +927,13 @@ def miniLM(params, orig_merged_list, displ_list, verbose, maxiter = 150, maxlam 
 
             print("Uninvertible Matrix!")
             if save_jacobian:
-                #Jdense = Jacob.todense()
-                #print Jdense.shape
-                #for i in range(len(Jdense)):
-                #    print i
-                #    if all(Jdense[i] == 0):
-                #        print "fdsakfdskjahfdkjs"
                 if not use_dense_J:
                     save_img(Jacob.todense(), jacobian_name)
                 else:
                     save_img(Jacob, jacobian_name)
 
-            return [
-                array([get_pad_params(unpad_params, displ_list, params)],dtype=float64),
-                array([chi2fromresid(curchi2, Wmat), -1], dtype=float64)] + [Jacob.todense()]*return_wmat
+            return [array([get_pad_params(unpad_params, displ_list, params)], dtype=float64),
+                    array([chi2fromresid(curchi2, Wmat), -1], dtype=float64)] + [Jacob.todense()]*return_wmat
 
         JtJ_lam2 = copy.deepcopy(JtJ)
 

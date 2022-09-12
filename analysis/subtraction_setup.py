@@ -22,7 +22,7 @@ max_ims = 1000 # 40 # Limit this to limit RAM or CPU time
 def setup_subtractions(basedir, channel, ra, dec,
     email='ckilpatrick@northwestern.edu', clobber=True, interactive=True,
     date_range=[], offset=[0.0, 0.0], stamp_size=29, nprocesses=32,
-    prf_version=4):
+    prf_version=4, sci_err_scale=20.0):
 
     if not interactive and not date_range:
         print('ERROR: need to be in interactive mode or provide a date range')
@@ -176,7 +176,7 @@ def setup_subtractions(basedir, channel, ra, dec,
         err_val = 1.
         epoch_val = group['epoch']
         if epoch_val>0:
-            err_val = 20.
+            err_val = sci_err_scale
 
         # Need to format with + if this is not the first entry
         if not err_str:
@@ -184,9 +184,10 @@ def setup_subtractions(basedir, channel, ra, dec,
         else:
             err_str += ' + [{0}]*{1}'.format(err_val, len(group['files']))
         if not epochs_str:
-            epochs_str += '[{0}]*{1}'.format(epoch_val, len(group['files']))
+            # Update - making this a unique value for every group
+            epochs_str += '[{0}]*{1}'.format(i, len(group['files']))
         else:
-            epochs_str += ' + [{0}]*{1}'.format(epoch_val, len(group['files']))
+            epochs_str += ' + [{0}]*{1}'.format(i, len(group['files']))
 
     lines = lines.replace("IIIII", str(fls_group))
     lines = lines.replace("PPPPP", epochs_str)
@@ -207,7 +208,20 @@ def setup_subtractions(basedir, channel, ra, dec,
 
     lines = lines.replace("NNNNN", str(nprocesses))
     prf = param_data.get_prf(int(channel.replace('ch','')), prf_version)
+    spatial = param_data.get_spatially_varying(int(channel.replace('ch','')),
+        prf_version)
+
     lines = lines.replace("VVVVV", prf)
+    lines = lines.replace("KKKKK", spatial)
+
+    # OVRSAMPL should be in fits header
+    hdu = fits.open(prf)
+    if 'OVRSAMPL' not in hdu[0].header.keys():
+        raise Exception(f'ERROR: OVRSAMPL not in {prf} header.  Stop!')
+    else:
+        oversample = hdu[0].header['OVRSAMPL']
+        lines = lines.replace("OOOOO", str(oversample))
+
 
     param_file = os.path.join(basedir, 'paramfile.txt')
     f = open(param_file, 'w')

@@ -15,9 +15,10 @@ def write_out_inlist(fls, outfile):
         f.write('\n'.join(fls)+'\n')
 
 def run_dir(var):
-    dr, mopex, ra, dec, channel, min_exptime = var
+    dr, mopex, ra, dec, channel, min_exptime, min_mjd, max_mjd = var
 
     ra = float(ra) ; dec = float(dec) ; min_exptime = float(min_exptime)
+    min_mjd = float(min_mjd) ; max_mjd = float(max_mjd)
 
     wd = os.path.join(dr, 'working_dir')
 
@@ -37,6 +38,10 @@ def run_dir(var):
     new_fls = []
     for fl in fls:
         hdu = fits.open(fl, mode='readonly')
+        mjd = hdu[0].header['MJD_OBS']
+        if mjd < min_mjd or mjd > max_mjd:
+            print(f'Skipping {fl}: outside MJD {min_mjd}->{max_mjd}')
+            continue
         if min_exptime:
             exptime=hdu[0].header['EXPTIME']
             if exptime<min_exptime:
@@ -93,12 +98,18 @@ def run_dir(var):
         os.system(cmd)
 
 def initial_process(basedir, mopex, ra, dec, channel='ch1', min_exptime=None,
-    nprocesses=8):
+    date_range=[], nprocesses=8):
 
     pool = mp.Pool(processes=nprocesses)
 
     drs = glob.glob(os.path.join(basedir, "*:*"))
-    var = [(dr, mopex, str(ra), str(dec), channel, str(min_exptime))
-        for dr in drs]
+    if len(date_range)==2:
+        min_mjd = date_range[0]
+        max_mjd = date_range[1]
+    else:
+        min_mjd = -999999
+        max_mjd = 999999
+    var = [(dr, mopex, str(ra), str(dec), channel, str(min_exptime),
+        str(min_mjd), str(max_mjd)) for dr in drs]
     pool.map(run_dir, var)
 

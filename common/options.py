@@ -60,6 +60,49 @@ def parse_channel_name(channel):
     print(f'ERROR: channel={channel} cannot be parsed')
     sys.exit()
 
+def parse_date_range(date_range_data):
+    t0 = None
+    date_range = []
+    if is_number(date_range_data[0]):
+        # Assume init date is MJD
+        try:
+            t0 = Time(date_range_data[0], format='mjd')
+        except:
+            pass
+    else:
+        try:
+            t0 = Time(date_range_data[0])
+        except:
+            pass
+    reldate = None ; t1 = None
+    if is_number(date_range_data[1]):
+        if float(date_range_data[1])<10000:
+            reldate = float(date_range_data[1])
+        else:
+            try:
+                t1 = Time(date_range_data[1], format='mjd')
+            except:
+                pass
+    else:
+        try:
+            t1 = Time(date_range_data[1])
+        except:
+            pass
+
+    if t0 and reldate:
+        if reldate < 0:
+            date_range = [t0.mjd + reldate, t0.mjd]
+            print(f'Interactive=False, date range={args.date_range}')
+        else:
+            date_range = [t0.mjd, t0.mjd + reldate]
+    elif t0 and t1:
+        if t0 < t1:
+            date_range = [t0.mjd, t1.mjd]
+        else:
+            date_range = [t1.mjd, t0.mjd]
+
+    return(date_range)
+
 def parse_arguments(usage=''):
 
     parser = argparse.ArgumentParser(description=usage)
@@ -83,12 +126,12 @@ def parse_arguments(usage=''):
                         help='Minimum exposure time images to analyze')
     parser.add_argument('--no-clobber', default=False, action='store_true',
                         help='Do not clobber previous runs of pipeline')
-    parser.add_argument('--init-date', default=None, type=str,
-                        help='UT date (MJD, ISO, etc.) for referencing date '+\
-                        'range.')
-    parser.add_argument('--max-date', default=None, type=str,
-                        help='Maximum date (MJD, ISO, relative to --init-date'+\
-                        ') for calculating date range.')
+    parser.add_argument('--science-date-range', default=None, type=str, nargs=2,
+                        help='UT date (MJD, ISO, etc.) for date range of '+\
+                        'range of science images.')
+    parser.add_argument('--data-date-range', default=None, type=str, nargs=2,
+                        help='UT date (MJD, ISO, etc.) for date range of '+\
+                        'all data.')
     parser.add_argument('--stamp-size', default=29, type=float,
                         help='Stamp size for analyzing Spitzer data '+\
                         '(must be odd integer).')
@@ -97,8 +140,19 @@ def parse_arguments(usage=''):
     parser.add_argument('--sn-offset', action='store', type=float,
                   help='Offsets (in RA/Dec) between input RA/Dec and target',
                   default=[0.0, 0.0], nargs=2)
+    parser.add_argument('--sci-err-scale', default=20.0, type=float,
+                        help='Scale factor to use for error scaling of model '+\
+                        'in science images (i.e., with transient emission).')
     parser.add_argument('--cluster', default=False, action='store_true',
                         help='Run forward_model in cluster mode')
+    parser.add_argument('--skip-sort', default=False, action='store_true',
+                        help='Skip initial file sorting')
+    parser.add_argument('--skip-initial-process', default=False,
+        action='store_true', help='Skip initial file processing')
+    parser.add_argument('--skip-subtraction', default=False,
+        action='store_true', help='Skip subtraction setup and forward model')
+    parser.add_argument('--skip-insert-subtractions', default=False,
+        action='store_true', help='Skip final mosaicing with subtractions')
     parser.add_argument('--email', type=str,
         default='ckilpatrick@northwestern.edu',
         help='Email to message when subtraction process is finished')
@@ -114,6 +168,7 @@ def parse_arguments(usage=''):
     args.band = parse_channel_name(args.band)
 
     args.date_range = []
+    args.all_date_range = []
     args.interactive = True
 
     args.stamp_size = int(args.stamp_size)
@@ -123,52 +178,15 @@ def parse_arguments(usage=''):
         print(f'Setting stamp size = {stamp_size}')
         args.stamp_size = int(stamp_size)
 
-    if args.init_date and args.max_date:
-        t0 = None
-        if is_number(args.init_date):
-            # Assume init date is MJD
-            try:
-                t0 = Time(args.init_date, format='mjd')
-            except:
-                pass
-        else:
-            try:
-                t0 = Time(args.init_date)
-            except:
-                pass
-        reldate = None ; t1 = None
-        if is_number(args.max_date):
-            if float(args.max_date)<10000:
-                reldate = float(args.max_date)
-            else:
-                try:
-                    t1 = Time(args.max_date, format='mjd')
-                except:
-                    pass
-        else:
-            try:
-                t1 = Time(args.max_date)
-            except:
-                pass
+    if args.science_date_range:
+        date_range = parse_date_range(args.science_date_range)
+        if len(date_range)==2:
+            args.interactive = False
+            args.date_range = date_range
 
-        if t0 and reldate:
-            if reldate < 0:
-                args.date_range = [t0.mjd + reldate, t0.mjd]
-                args.interactive = False
-                print(f'Interactive=False, date range={args.date_range}')
-            else:
-                args.date_range = [t0.mjd, t0.mjd + reldate]
-                args.interactive = False
-                print(f'Interactive=False, date range={args.date_range}')
-        elif t0 and t1:
-            if t0 < t1:
-                args.date_range = [t0.mjd, t1.mjd]
-                args.interactive = False
-                print(f'Interactive=False, date range={args.date_range}')
-            else:
-                args.date_range = [t1.mjd, t0.mjd]
-                args.interactive = False
-                print(f'Interactive=False, date range={args.date_range}')
-
+    if args.data_date_range:
+        date_range = parse_date_range(args.science_date_range)
+        if len(date_range)==2:
+            args.all_date_range = date_range
 
     return(args)

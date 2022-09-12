@@ -7,13 +7,18 @@ data_dir = os.path.abspath(os.path.join(analysis_dir, '../data'))
 
 def get_all_prf_data():
     prfs = glob.glob(os.path.join(data_dir, '*prf*.fits'))
-    table = Table([['X'*100],[0],[0],['X'*100],['X'*10],['X'*20],['X'*10],[0],[0]],
+    table = Table([['X'*100],[0],[0],['X'*100],['X'*10],['X'*20],['X'*10],[0],
+        [0]],
         names=('file','channel','version','origfile','grid','size','type',
             'oversample','iter')).copy()[:0]
 
     for prf in prfs:
 
         hdu = fits.open(prf)
+        if 'TYPE' not in hdu[0].header.keys():
+            continue
+        if hdu[0].header['TYPE'] in ['DX','DY']:
+            continue
         size = str(hdu[0].header['NAXIS1'])+'x'+str(hdu[0].header['NAXIS2'])
         if 'GRID' in hdu[0].header.keys():
             grid = hdu[0].header['GRID']
@@ -42,10 +47,18 @@ def get_prf(ch, ver, oversample=5):
         prf_table.sort('version')
         return(prf_table[-1]['file'])
 
+def get_spatially_varying(ch, ver, oversample=5):
+
+    prf = get_prf(ch, ver, oversample=oversample)
+    hdu = fits.open(prf, mode='readonly')
+
+    if 'SPATIAL' in hdu[0].header.keys() and hdu[0].header['SPATIAL']==1:
+        return(1)
+    else:
+        return(0)
 
 
-
-data="""oversample      5       # Should match psf
+data="""oversample      OOOOO            # Should match psf
 renormpsf       0               # only use if psf is not normalized
 psf_has_pix     1               # ePSF containing pixel?
 
@@ -77,6 +90,8 @@ splineradius        SSSSS
 splinepixelscale    0.00015     # default is 2.10e-5
 
 apodize             AAAAA
+
+spatial             KKKKK
 
 pixel_area_map      "{data_dir}/blank_pam.fits"
 bad_pixel_list      "{data_dir}/blank_bad_pixel_list.txt"

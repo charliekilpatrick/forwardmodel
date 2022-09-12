@@ -61,5 +61,6 @@ def sort_files(indir, channel='ch1', objname=None):
         outname = os.path.basename(outname)
         outname = os.path.join(indir, outname)
         print(f'Moving {drs[i]}->{outname}')
-        shutil.move(drs[i], outname)
-        epochs[objs[i]] += 1
+        if os.path.exists(drs[i]) and not os.path.exists(outname):
+            shutil.move(drs[i], outname)
+            epochs[objs[i]] += 1

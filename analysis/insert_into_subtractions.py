@@ -229,7 +229,8 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
 
         for subdir_to_remove in ["BoxOutlier", "ReInterp", "Overlap_Corr",
             "DualOutlier", "Outlier", "Interp", "MedFilter", "Coadd", "Rmask",
-            "Combine", "cal", "cdf", "addkeyword.txt", "*.nl"]:
+            "Combine", "cal", "cdf", "addkeyword.txt", "Detect",
+            "Medfilter", "*.nl"]:
             f_mopex.write(f"rm -fvr {wd}/{subdir_to_remove} \n")
 
         try:
