@@ -143,6 +143,8 @@ def parse_arguments(usage=''):
     parser.add_argument('--sci-err-scale', default=20.0, type=float,
                         help='Scale factor to use for error scaling of model '+\
                         'in science images (i.e., with transient emission).')
+    parser.add_argument('--niterations', default=4, type=int,
+                        help='number of iterations for forward model code')
     parser.add_argument('--cluster', default=False, action='store_true',
                         help='Run forward_model in cluster mode')
     parser.add_argument('--skip-sort', default=False, action='store_true',
@@ -153,9 +155,30 @@ def parse_arguments(usage=''):
         action='store_true', help='Skip subtraction setup and forward model')
     parser.add_argument('--skip-insert-subtractions', default=False,
         action='store_true', help='Skip final mosaicing with subtractions')
+    parser.add_argument('--use-fif', default=False,
+        action='store_true', help='Use a FIF table generated from ra/dec')
+    parser.add_argument('--masking', default=False,
+        action='store_true', help='Use masking instead of error scaling for '+\
+        'science epochs.')
+    parser.add_argument('--mask-radius', default=2.0, type=float,
+        help='Radius (in arcsec) of masking.')
+    parser.add_argument('--fake-stars', default=False,
+        action='store_true', help='Inject fake stars into science images.')
+    parser.add_argument('--fake-radius', default=4.0, type=float,
+        help='Radius (in arcsec) to inject fake stars around RA/Dec.')
+    parser.add_argument('--fake-min-mag', default=18.0, type=float,
+        help='Minimum magnitude of injected fake stars.')
+    parser.add_argument('--fake-max-mag', default=21.0, type=float,
+        help='Maximum magnitude of injected fake stars.')
+    parser.add_argument('--redo-mosaic', default=False,
+        action='store_true', help='Redo the mosaic during subtraction setup.')
     parser.add_argument('--email', type=str,
         default='ckilpatrick@northwestern.edu',
         help='Email to message when subtraction process is finished')
+    parser.add_argument('--elliptical', default=False,
+        action='store_true', help='Using 1D elliptical model forward model.')
+    parser.add_argument('--one-epoch', default=False,
+        action='store_true', help='Reduce all data as a single epoch.')
 
     if len(sys.argv) < 4: print(usage) ; sys.exit(1)
     else: coord = parse_coord(sys.argv[2], sys.argv[3])

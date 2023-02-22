@@ -419,52 +419,13 @@ class forward_model():
             if type(settings[key]) != list:
                 settings[key] = [settings[key]]*settings["n_img"]
 
-        if settings["spatial"]==0:
-            if len(settings["psfs"]) == 1:
-                settings["psfs"] = [settings["psfs"][0]
-                    for i in range(settings["n_img"])]
-        elif settings["spatial"]==1:
-            # Need to do this image by image for given x/y
-            RA0 = settings["RA0"]
-            Dec0 = settings["Dec0"]
-
-            base_file = settings["psfs"][0]
-            dx_file = base_file.replace('base','dx')
-            dy_file = base_file.replace('base','dy')
-
-            psf_hdu = fits.open(base_file)
-            dx_hdu = fits.open(dx_file)
-            dy_hdu = fits.open(dy_file)
-
-            # Going to make a bunch of new psf files - first make PRF dir
-            psf_dir = os.path.join(settings["base_dir"], 'psfs')
-            if not os.path.exists(psf_dir):
-                os.makedirs(psf_dir)
-
-            # Make one PSF file for each image
-            psf_names = []
-            for img in settings["images"]:
-                hdu = fits.open(img)
-                w = wcs.WCS(hdu[0].header)
-                pix_xy = w.all_world2pix([[RA0, Dec0]], 1)[0]
-                pix_xy = array(around(pix_xy), dtype=int32)
-
-                psf_data = psf_hdu[0].data + (pix_xy[0]-128)*dx_hdu[0].data +\
-                    (pix_xy[1]-128)*dy_hdu[0].data
-
-                psf_name = img.replace('.fits','_psf.fits')
-
-                newhdu = fits.PrimaryHDU()
-                newhdu.header = psf_hdu[0].header
-                newhdu.data = psf_data
-
-                newhdu.writeto(psf_name, overwrite=True,
-                    output_verify='silentfix')
-
-
         for key in ["RA0", "Dec0"]:
             settings[key] = array(settings[key])
         settings['dec_scale']=cos(settings["Dec0"]/(180./pi))
+
+        if len(settings["psfs"]) == 1:
+            settings["psfs"] = [settings["psfs"][0]
+                for i in range(settings["n_img"])]
 
         for key in ["sciext", "errext", "dqext", "errscale", "pixel_area_map",
             "bad_pixel_list", "images", "epochs", "psfs"]:
@@ -711,6 +672,7 @@ class forward_model():
         psf_data = {'psf_FFTs':{}, 'psf_subpixelized':{}}
 
         for psf in unique(settings["psfs"]):
+            print(f'psf name: {psf}')
             f = fits.open(psf)
             psfdata = array(f[0].data, dtype=float64)
             f.close()
@@ -718,11 +680,11 @@ class forward_model():
             msg='PSF has multiple pixels at the same maximum!'
             assert sum(psfdata == psfdata.max()) == 1, msg
 
-            print(f"psf shape {psfdata.shape}")
+            print(f"psf shape: {psfdata.shape}")
             model_shape = settings["patch"]*settings["oversample"]
-            print(f"model shape {model_shape}")
+            print(f"model shape: {model_shape}")
             padsize = int(2**ceil(log2(max(max(psfdata.shape), model_shape))))
-            print(f"padsize {padsize}")
+            print(f"padsize: {padsize}")
             settings["padsize"] = padsize
 
             psfdata_pad = zeros([padsize]*2, dtype=float64)
@@ -731,7 +693,7 @@ class forward_model():
             max_val = max(psfdata.shape) + (max(psfdata.shape) % 2 == 0)
             psfdata_odd = zeros([max_val]*2, dtype=float64)
             padsize_odd = len(psfdata_odd)
-            print(f"padsize_odd {padsize_odd}")
+            print(f"padsize_odd: {padsize_odd}")
             assert padsize_odd % 2 == 1
 
             psfdata_odd[:psfdata.shape[0], :psfdata.shape[1]] = psfdata
@@ -769,7 +731,7 @@ class forward_model():
             psf_data["psf_FFTs"][psf] = psfdata_fft
 
             maxinds = where(psfdata_odd == psfdata_odd.max())
-            print(f"maxinds {maxinds[0][0]} {maxinds[1][0]}")
+            print(f"maxinds: {maxinds[0][0]} {maxinds[1][0]}")
             recenter = zeros([padsize_odd]*2, dtype=float64)
             recenter[int(floor(psfdata.shape[0]/2.)) - maxinds[0][0],
                 int(floor(psfdata.shape[1]/2.)) - maxinds[1][0]] = 1.

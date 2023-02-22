@@ -5,13 +5,15 @@ import os
 import glob
 
 def clean_dirs(basedir):
-    for file_glob in ['*.pickle', '*.txt', '*.out', '*.log', '*.sh', '*.fits']:
+    for file_glob in ['*.pickle', '*.txt', '*.log', '*.sh', '*.fits']:
         for file in glob.glob(os.path.join(basedir, file_glob)):
+            if not os.path.isfile(file): continue
             print(f'Deleting file: {file}')
             os.remove(file)
 
-    for subdir_glob in ['sub_stack_*']:
+    for subdir_glob in ['sub_stack_*','psfs','*:*','r*','ut*']:
         for subdir in glob.glob(os.path.join(basedir, subdir_glob)):
+            if not os.path.isdir(subdir): continue
             print(f'Deleting directory: {subdir}')
             shutil.rmtree(subdir)
 

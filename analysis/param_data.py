@@ -67,7 +67,10 @@ patch               QQQQQ       # patch size-- must be odd
 fixmodelfromrefs    0           # 1=> fix the model from the references
 use_DQ_list         1
 n_cpu               NNNNN
-n_iter              4
+n_iter              TTTTT
+
+n_gal                   0
+gal_type                "2D"
 
 sndRA_offset        RRRAOFFSET  # SNRA - GalRA
 sndDec_offset       DDECOFFSET  # SNdec - Galdec
@@ -81,17 +84,16 @@ sciext              1
 errext              2
 dqext               3
 okaydqs             [0]
+maskdqs             [32]
 errscale            EEEEE
 
 epochs              PPPPP       # 0 = reference, 1 = first epoch, ...
-psfs                ["VVVVV"]  # psf for galaxy, SN epoch 1, ...
+psfs                VVVVV       # psf for galaxy, SN epoch 1, ...
 
 splineradius        SSSSS
 splinepixelscale    0.00015     # default is 2.10e-5
 
 apodize             AAAAA
-
-spatial             KKKKK
 
 pixel_area_map      "{data_dir}/blank_pam.fits"
 bad_pixel_list      "{data_dir}/blank_bad_pixel_list.txt"

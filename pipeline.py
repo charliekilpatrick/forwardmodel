@@ -41,7 +41,7 @@ if __name__ == '__main__':
     if not args.skip_sort:
         options.message('Sorting files in '+args.datadir)
         sort_files.sort_files(args.datadir, channel=args.band,
-            objname=args.object)
+            objname=args.object, one_epoch=args.one_epoch)
 
     if not args.skip_initial_process:
         if not os.path.exists(args.mopex_dir):
@@ -52,8 +52,9 @@ if __name__ == '__main__':
 
         options.message('Initial processing')
         initial_process.initial_process(args.datadir, args.mopex_dir, args.ra,
-            args.dec, channel=args.band, nprocesses=args.nprocesses,
-            min_exptime=args.min_exptime, date_range=args.all_date_range)
+            args.dec, args.object, channel=args.band,
+            nprocesses=args.nprocesses, min_exptime=args.min_exptime,
+            date_range=args.all_date_range, use_fif=args.use_fif)
 
     clobber = not args.no_clobber
 
@@ -64,26 +65,35 @@ if __name__ == '__main__':
             interactive=args.interactive, date_range=args.date_range,
             offset=args.sn_offset, stamp_size=args.stamp_size,
             nprocesses=args.nprocesses, prf_version=args.prf_version,
-            sci_err_scale=args.sci_err_scale)
+            sci_err_scale=args.sci_err_scale, niter=args.niterations,
+            masking=args.masking, mask_radius=args.mask_radius,
+            fake_stars=args.fake_stars, fake_radius=args.fake_radius,
+            fake_min_mag=args.fake_min_mag, fake_max_mag=args.fake_max_mag)
 
         # Run new_phot.py script
         options.message('Running photometry script')
-        #basedir=args.datadir
-        #script = os.path.join(param_data.analysis_dir, 'new_phot.py')
-        #cmd = f'{script} {run_file}'
-        #os.chdir(basedir)
-        #print(cmd)
-        #os.system(cmd)
+        basedir=args.datadir
+        #if args.elliptical:
+        if True:
+            script = os.path.join(param_data.analysis_dir,
+                'new_phot_elliptical.py')
+        #else:
+        #    script = os.path.join(param_data.analysis_dir, 'new_phot.py')
+        cmd = f'{script} {run_file}'
+        os.chdir(basedir)
+        print(cmd)
+        os.system(cmd)
 
-        from analysis import forward_model
-        fm = forward_model.forward_model(run_file)
-        fm.do_main_reduction(fm.parsed, fm.settings)
+        # TODO - finish implementing parallelization for new fm code
+        #from analysis import forward_model
+        #fm = forward_model.forward_model(run_file)
+        #fm.do_main_reduction(fm.parsed, fm.settings)
 
     if not args.skip_insert_subtractions:
         options.message('Subtracting models from data')
         run_files = insert_into_subtractions.insert_into_subtractions(
             args.datadir, args.mopex_dir, args.band, args.object,
-            email=args.email)
+            args.fake_stars, email=args.email)
 
         # Run insert subtraction files
         for file in sorted(run_files):

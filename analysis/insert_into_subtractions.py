@@ -10,7 +10,8 @@ import os
 import glob
 import shutil
 
-def create_mopex_cmd(basecmd, idx, channel, wd):
+def create_mopex_cmd(basecmd, idx, channel, wd, imlist='input/images.list',
+    slist='input/sigma.list', mlist='input/mask.list'):
 
     cmd = ''
     if '.pl' not in basecmd:
@@ -27,7 +28,7 @@ def create_mopex_cmd(basecmd, idx, channel, wd):
     else:
         cmd += f' -n {basecmd}_{ch}_nofid.nl'
 
-    cmd += ' -I input/images.list -S input/sigma.list -d input/mask.list'
+    cmd += f' -I {imlist} -S {slist} -d {mlist}'
     cmd += f' -O {wd}'
 
     if idx!=0:
@@ -58,6 +59,7 @@ def create_nofid_params(mopex, basecmd, channel):
 
 
 def insert_into_subtractions(basedir, mopex, channel, objname,
+    fake_stars,
     email='ckilpatrick@northwestern.edu'):
 
     out_runfiles=[]
@@ -102,7 +104,9 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
         f_mopex = open(filename, 'w')
         f_mopex.write("sleep 2 \n")
 
-        print("Figuring out which images to look at...")
+        print(f"Figuring out which images to look at for epoch {ee}...")
+        n_total = len(where(settings['epochs']==ee)[0])
+        print(f"There are {n_total} candidate images")
 
         images_to_work_with = []
         bad_images = []
@@ -127,9 +131,9 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
         t = Time(mjd, format='mjd')
         datestr = t.datetime.strftime('ut%y%m%d')
 
-        baseoutname = f'{objname}.{channel}.{datestr}.{aorkey}_stk.fits'
-        baseoutcov = baseoutname.replace('_stk.fits','_cov.fits')
-        baseoutunc = baseoutname.replace('_stk.fits','_unc.fits')
+        baseoutname = f'{objname}.{channel}.{datestr}.{aorkey}_stk.diff.fits'
+        baseoutcov = baseoutname.replace('_stk.diff.fits','_cov.diff.fits')
+        baseoutunc = baseoutname.replace('_stk.diff.fits','_unc.diff.fits')
 
         resid_file = os.path.join(basedir, 'residuals.fits')
 
@@ -142,6 +146,7 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
             os.makedirs(os.path.join(wd, 'input'))
 
         f_ilist = open(os.path.join(wd,"input/images.list"), 'w')
+        f_ulist = open(os.path.join(wd,"input/images_orig.list"), 'w')
         f_slist = open(os.path.join(wd,"input/sigma.list"), 'w')
         f_mlist = open(os.path.join(wd,"input/mask.list"), 'w')
 
@@ -150,8 +155,10 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
         for imind in images_to_work_with:
             # Construct full path to new image
             newim_base = os.path.basename(settings["images"][imind])
-            newim_base = newim_base.replace("cbcd_merged.fits", "cbcd.fits")
+            unmod_base = newim_base.replace("cbcd_merged.fits", "cbcd.fits")
+            newim_base = newim_base.replace("cbcd_merged.fits", "cbcd_sub.fits")
             newim = os.path.join(wd_im, newim_base)
+            unmod = os.path.join(wd_im, unmod_base)
 
             assert newim != settings["images"][imind]
 
@@ -161,7 +168,7 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
             origim_path = os.path.split(settings["images"][imind])[0]
 
             # Original image path should be like...
-            origim_path = origim_path.replace('subtraction', channel+'/bcd')
+            origim_path = origim_path.replace('subtraction', channel)
 
             # Full path to original image
             origim = os.path.join(origim_path, origim_base)
@@ -169,6 +176,18 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
             assert os.path.exists(origim)
 
             f = fits.open(origim)
+            if fake_stars:
+                # Need to add back in data with fake stars
+                newf = fits.open(settings["images"][imind])
+                f[0].data = newf['SCI'].data
+                f[0].header = newf['SCI'].header
+                for key in newf[0].header.keys():
+                    if key not in f[0].header.keys():
+                        f[0].header[key]=newf[0].header[key]
+                newf.close()
+
+            # Write image before it's modified
+            f.writeto(unmod,  output_verify='silentfix', overwrite=True)
 
             pixels_not_modified_by_subtraction = f[0].data*0. + 1
 
@@ -185,10 +204,11 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
             f[0].data -= median(f[0].data[sky_inds])*\
                 pixels_not_modified_by_subtraction
 
-            f.writeto(newim, overwrite = True)
+            f.writeto(newim, output_verify='silentfix', overwrite=True)
             f.close()
 
             f_ilist.write(newim + '\n')
+            f_ulist.write(unmod + '\n')
             f_slist.write(origim.replace("cbcd.fits", "cbunc.fits") + '\n')
             f_mlist.write(origim.replace("cbcd.fits", "bimsk.fits") + '\n')
 
@@ -229,9 +249,33 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
 
         for subdir_to_remove in ["BoxOutlier", "ReInterp", "Overlap_Corr",
             "DualOutlier", "Outlier", "Interp", "MedFilter", "Coadd", "Rmask",
-            "Combine", "cal", "cdf", "addkeyword.txt", "Detect",
-            "Medfilter", "*.nl"]:
+            "Combine", "addkeyword.txt", "Detect", "Medfilter"]:
             f_mopex.write(f"rm -fvr {wd}/{subdir_to_remove} \n")
+
+        # We want to redo mosaic for the original images to compare
+        if fake_stars:
+            baseoutname = f'{objname}.{channel}.{datestr}.{aorkey}_stk.fits'
+            baseoutcov = baseoutname.replace('_stk.fits','_cov.fits')
+            baseoutunc = baseoutname.replace('_stk.fits','_unc.fits')
+
+            f_mopex.write(create_mopex_cmd('overlap', ee, channel, wd,
+                imlist='input/images_orig.list')+' \n')
+            f_mopex.write(create_mopex_cmd('mosaic', ee, channel, wd,
+                imlist='input/images_orig.list')+' \n')
+
+            cmd1=f"mv -v Combine/mosaic.fits {baseoutname}"
+            cmd2=f"mv -v Combine/mosaic_cov.fits {baseoutcov}"
+            cmd3=f"mv -v Combine/mosaic_unc.fits {baseoutunc}"
+
+            f_mopex.write(cmd1+' \n')
+            f_mopex.write(cmd2+' \n')
+            f_mopex.write(cmd3+' \n')
+
+            for subdir_to_remove in ["BoxOutlier", "ReInterp", "Overlap_Corr",
+                "DualOutlier", "Outlier", "Interp", "MedFilter", "Coadd",
+                "Rmask", "Combine", "cal", "cdf", "addkeyword.txt", "Detect",
+                "Medfilter", "*.nl"]:
+                f_mopex.write(f"rm -fvr {wd}/{subdir_to_remove} \n")
 
         try:
             f_mopex.close()
@@ -246,6 +290,6 @@ def insert_into_subtractions(basedir, mopex, channel, objname,
 
 if __name__ == '__main__':
     # Testing the method on local machine
-    insert_into_subtractions('/data/ckilpatrick/spitzer/ch1',
-        '/data/software/mopex', 'ch1', 'AT2017gfo',
+    insert_into_subtractions('/data/ckilpatrick/spitzer/2017gfo/ch2',
+        '/data/software/mopex', 'ch2', 'AT2017gfo', True,
         email='ckilpatrick@northwestern.edu')
