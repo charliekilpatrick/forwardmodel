@@ -17,7 +17,8 @@ from analysis import param_data
 
 if __name__ == '__main__':
     start = time.time()
-    args = options.parse_arguments(usage='pipeline.py datadir ra dec [options]')
+    args = options.parse_arguments(
+        usage='pipeline.py datadir telescope ra dec [options]')
 
     command = ' '.join(sys.argv)
     options.message(f'Starting: {command}')

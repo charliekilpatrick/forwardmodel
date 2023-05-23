@@ -107,13 +107,15 @@ def parse_arguments(usage=''):
 
     parser = argparse.ArgumentParser(description=usage)
     parser.add_argument('datadir', type=str, default='.',
-                        help='Input directory with r* subdirs from Spitzer')
+                        help='Input directory with subdirs to analyze.')
+    parser.add_argument('telescope', type=str, default='spitzer',
+                        help='Telescope data that we are analyzing.')
     parser.add_argument('ra', type=str, default='0.0',
                         help='Right ascension of region to analyze in images')
     parser.add_argument('dec', type=str, default='0.0',
                         help='Declination of region to analyze in images')
     parser.add_argument('--band','--channel', type=str, default='ch1',
-                        help='Spitzer/IRAC band to reduce')
+                        help='Band to reduce')
     parser.add_argument('--download', type=str, default=None,
                         help='Download files for input RA/Dec to input dir.')
     parser.add_argument('--object', type=str, default=None,
@@ -133,7 +135,7 @@ def parse_arguments(usage=''):
                         help='UT date (MJD, ISO, etc.) for date range of '+\
                         'all data.')
     parser.add_argument('--stamp-size', default=29, type=float,
-                        help='Stamp size for analyzing Spitzer data '+\
+                        help='Stamp size for analyzing data '+\
                         '(must be odd integer).')
     parser.add_argument('--prf-version', default=2, type=int,
                         help='Version of the PRF to use from data directory.')
