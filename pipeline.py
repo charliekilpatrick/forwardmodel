@@ -23,7 +23,7 @@ if __name__ == '__main__':
     command = ' '.join(sys.argv)
     options.message(f'Starting: {command}')
 
-    if args.download:
+    if args.download and args.instrument=='irac':
         options.message(f'Downloading to: {args.download}')
         coord = download_spitzer.parse_coord(args.ra, args.dec)
         download_spitzer.download_from_coord(coord, outdir=args.download)
@@ -45,7 +45,7 @@ if __name__ == '__main__':
             objname=args.object, one_epoch=args.one_epoch)
 
     if not args.skip_initial_process:
-        if not os.path.exists(args.mopex_dir):
+        if not os.path.exists(args.mopex_dir) and args.instrument=='irac':
             print(f'mopex directory {args.mopex_dir} does not exist')
             print('mopex is required to continue')
             print('Install mopex and use --mopex-dir to continue')

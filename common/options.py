@@ -181,6 +181,8 @@ def parse_arguments(usage=''):
         action='store_true', help='Using 1D elliptical model forward model.')
     parser.add_argument('--one-epoch', default=False,
         action='store_true', help='Reduce all data as a single epoch.')
+    parser.add_argument('--instrument', default='irac',
+        help='Instrument we are reducing.  Current support for IRAC and NIRCam')
 
     if len(sys.argv) < 4: print(usage) ; sys.exit(1)
     else: coord = parse_coord(sys.argv[2], sys.argv[3])
@@ -190,7 +192,10 @@ def parse_arguments(usage=''):
     sys.argv[2] = str(coord.ra.degree) ; sys.argv[3] = str(coord.dec.degree)
 
     args = parser.parse_args()
-    args.band = parse_channel_name(args.band)
+
+    args.instrument = args.instrument.lower()
+    if args.instrument=='irac':
+        args.band = parse_channel_name(args.band)
 
     args.date_range = []
     args.all_date_range = []
